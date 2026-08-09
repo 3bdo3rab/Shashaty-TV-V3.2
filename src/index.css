@@ -1,0 +1,319 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Cairo', system-ui, sans-serif;
+}
+
+:root {
+  --color-primary: #8b5cf6;
+  --color-primary-rgb: 139, 92, 246;
+  --color-accent: #f59e0b;
+  --color-accent-rgb: 245, 158, 11;
+  --glass-blur: 20px;
+  --glass-opacity: 0.15;
+  --glass-border-opacity: 0.2;
+  --glass-glow-alpha: 0.25;
+}
+
+body {
+  background-color: #000;
+  color: white;
+  user-select: none;
+  -webkit-user-select: none;
+  overflow: hidden;
+}
+
+input, textarea, [contenteditable="true"] {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* App Maximized Viewport Fallback */
+body.app-maximized-viewport {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 999999 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+
+/* Glassmorphism utilities driven by root CSS variables */
+.glass {
+  background: rgba(var(--color-primary-rgb), var(--glass-opacity)) !important;
+  backdrop-filter: blur(var(--glass-blur)) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur)) !important;
+  border: 1px solid rgba(var(--color-primary-rgb), var(--glass-border-opacity)) !important;
+}
+
+.glass-card {
+  background: linear-gradient(135deg, rgba(var(--color-primary-rgb), var(--glass-opacity)) 0%, rgba(12, 12, 18, 0.85) 100%) !important;
+  backdrop-filter: blur(var(--glass-blur)) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur)) !important;
+  border: 1px solid rgba(var(--color-primary-rgb), var(--glass-border-opacity)) !important;
+  box-shadow: 0 8px 32px 0 rgba(0,0,0,0.4), 0 0 25px rgba(var(--color-primary-rgb), var(--glass-glow-alpha)) !important;
+}
+
+.glass-panel {
+  background: rgba(12, 12, 18, 0.85) !important;
+  backdrop-filter: blur(var(--glass-blur)) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur)) !important;
+  border-left: 1px solid rgba(var(--color-primary-rgb), var(--glass-border-opacity)) !important;
+}
+
+/* Dynamic Primary & Accent Glass Elements */
+.glass-primary-box {
+  background: linear-gradient(135deg, rgba(var(--color-primary-rgb), calc(var(--glass-opacity) * 1.5)) 0%, rgba(var(--color-primary-rgb), 0.08) 100%) !important;
+  backdrop-filter: blur(var(--glass-blur)) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur)) !important;
+  border: 1px solid rgba(var(--color-primary-rgb), calc(var(--glass-border-opacity) * 1.5)) !important;
+  box-shadow: 0 4px 20px 0 rgba(var(--color-primary-rgb), var(--glass-glow-alpha)) !important;
+}
+
+.glass-accent-box {
+  background: linear-gradient(135deg, rgba(var(--color-accent-rgb), calc(var(--glass-opacity) * 1.5)) 0%, rgba(var(--color-accent-rgb), 0.08) 100%) !important;
+  backdrop-filter: blur(var(--glass-blur)) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur)) !important;
+  border: 1px solid rgba(var(--color-accent-rgb), calc(var(--glass-border-opacity) * 1.5)) !important;
+  box-shadow: 0 4px 20px 0 rgba(var(--color-accent-rgb), var(--glass-glow-alpha)) !important;
+}
+
+.glass-primary-btn {
+  background: linear-gradient(135deg, rgba(var(--color-primary-rgb), 0.88) 0%, rgba(var(--color-primary-rgb), 0.98) 100%) !important;
+  backdrop-filter: blur(12px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.25) !important;
+  box-shadow: 0 4px 25px rgba(var(--color-primary-rgb), 0.45) !important;
+  color: white !important;
+}
+
+.glass-accent-btn {
+  background: linear-gradient(135deg, rgba(var(--color-accent-rgb), 0.88) 0%, rgba(var(--color-accent-rgb), 0.98) 100%) !important;
+  backdrop-filter: blur(12px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.25) !important;
+  box-shadow: 0 4px 25px rgba(var(--color-accent-rgb), 0.45) !important;
+  color: white !important;
+}
+
+.custom-primary-text {
+  color: var(--color-primary) !important;
+}
+
+.custom-accent-text {
+  color: var(--color-accent) !important;
+}
+
+.custom-primary-bg {
+  background-color: var(--color-primary) !important;
+}
+
+.custom-accent-bg {
+  background-color: var(--color-accent) !important;
+}
+
+.custom-gradient-text {
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-accent) 100%) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+}
+
+/* Global App-Wide Color Theme Overrides for Purple & Amber */
+.bg-purple-600, .bg-purple-500, .bg-purple-700 {
+  background-color: var(--color-primary) !important;
+}
+
+.bg-purple-500\/20, .bg-purple-600\/20, .bg-purple-500\/10, .bg-purple-900\/20, .bg-purple-950\/40, .bg-purple-900\/40 {
+  background-color: rgba(var(--color-primary-rgb), 0.2) !important;
+}
+
+.text-purple-300, .text-purple-400, .text-purple-200, .text-purple-500 {
+  color: var(--color-primary) !important;
+}
+
+.border-purple-500\/30, .border-purple-400\/30, .border-purple-500\/40, .border-purple-500\/20, .border-purple-400, .border-purple-500 {
+  border-color: rgba(var(--color-primary-rgb), var(--glass-border-opacity)) !important;
+}
+
+.shadow-purple-600\/30, .shadow-purple-500\/30, .shadow-purple-500\/20 {
+  box-shadow: 0 10px 25px -5px rgba(var(--color-primary-rgb), var(--glass-glow-alpha)) !important;
+}
+
+/* Amber/Golden Accent Overrides */
+.text-amber-300, .text-amber-400, .text-amber-200, .text-amber-500 {
+  color: var(--color-accent) !important;
+}
+
+.bg-amber-500\/20, .bg-amber-500\/10, .bg-amber-400\/20, .bg-amber-500\/30 {
+  background-color: rgba(var(--color-accent-rgb), 0.2) !important;
+}
+
+.border-amber-400\/30, .border-amber-500\/30, .border-amber-400\/40, .border-amber-400 {
+  border-color: rgba(var(--color-accent-rgb), var(--glass-border-opacity)) !important;
+}
+
+.bg-amber-500, .bg-amber-400 {
+  background-color: var(--color-accent) !important;
+}
+
+.shadow-amber-500\/30, .shadow-amber-500\/20 {
+  box-shadow: 0 10px 25px -5px rgba(var(--color-accent-rgb), var(--glass-glow-alpha)) !important;
+}
+
+/* Background Glowing Orbs using CSS variables */
+.dynamic-theme-orb-1 {
+  background: radial-gradient(circle, rgba(var(--color-primary-rgb), 0.45) 0%, rgba(var(--color-primary-rgb), 0) 70%);
+}
+
+.dynamic-theme-orb-2 {
+  background: radial-gradient(circle, rgba(var(--color-accent-rgb), 0.4) 0%, rgba(var(--color-accent-rgb), 0) 70%);
+}
+
+/* Animated Colorful Background Keyframes */
+@keyframes gradientBgFlow {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes floatOrbOne {
+  0%, 100% { transform: translate(0px, 0px) scale(1) rotate(0deg); }
+  33% { transform: translate(60px, -60px) scale(1.2) rotate(120deg); }
+  66% { transform: translate(-40px, 40px) scale(0.9) rotate(240deg); }
+}
+
+@keyframes floatOrbTwo {
+  0%, 100% { transform: translate(0px, 0px) scale(1) rotate(0deg); }
+  33% { transform: translate(-70px, 50px) scale(1.25) rotate(-120deg); }
+  66% { transform: translate(50px, -50px) scale(0.85) rotate(-240deg); }
+}
+
+@keyframes floatOrbThree {
+  0%, 100% { transform: translate(0px, 0px) scale(1) rotate(0deg); }
+  50% { transform: translate(80px, 60px) scale(1.3) rotate(180deg); }
+}
+
+@keyframes pulseGlow {
+  0%, 100% { opacity: 0.4; transform: scale(1); }
+  50% { opacity: 0.8; transform: scale(1.1); }
+}
+
+.animate-gradient-flow {
+  background-size: 300% 300%;
+  animation: gradientBgFlow 15s ease infinite;
+}
+
+.animate-float-orb-1 {
+  animation: floatOrbOne 18s ease-in-out infinite;
+}
+
+.animate-float-orb-2 {
+  animation: floatOrbTwo 22s ease-in-out infinite;
+}
+
+.animate-float-orb-3 {
+  animation: floatOrbThree 20s ease-in-out infinite;
+}
+
+.animate-pulse-glow {
+  animation: pulseGlow 6s ease-in-out infinite;
+}
+
+/* Hide default scrollbar for seamless TV experience */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Custom Scrollbar for other areas */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(0,0,0,0.1);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.2);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,0.4);
+}
+
+/* Simplified / Lite Mode (وضع مبسط خالي من التأثيرات والحركة والتوهج) */
+html.lite-mode *,
+html.lite-mode *::before,
+html.lite-mode *::after,
+.lite-mode *,
+.lite-mode *::before,
+.lite-mode *::after {
+  animation: none !important;
+  transition: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  filter: none !important;
+}
+
+html.lite-mode *:hover,
+.lite-mode *:hover {
+  transform: none !important;
+}
+
+html.lite-mode .glass,
+html.lite-mode .glass-card,
+html.lite-mode .glass-panel,
+html.lite-mode .glass-primary-box,
+html.lite-mode .glass-accent-box,
+.lite-mode .glass,
+.lite-mode .glass-card,
+.lite-mode .glass-panel,
+.lite-mode .glass-primary-box,
+.lite-mode .glass-accent-box {
+  background: #121218 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  box-shadow: none !important;
+}
+
+html.lite-mode .glass-primary-btn,
+.lite-mode .glass-primary-btn {
+  background: #7c3aed !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  box-shadow: none !important;
+}
+
+html.lite-mode .glass-accent-btn,
+.lite-mode .glass-accent-btn {
+  background: #d97706 !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  box-shadow: none !important;
+}
+
+html.lite-mode [class*="animate-"],
+html.lite-mode [class*="shadow-"],
+html.lite-mode [class*="backdrop-blur"],
+.lite-mode [class*="animate-"],
+.lite-mode [class*="shadow-"],
+.lite-mode [class*="backdrop-blur"] {
+  animation: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: none !important;
+}
+
+html.lite-mode .dynamic-theme-orb-1,
+html.lite-mode .dynamic-theme-orb-2,
+.lite-mode .dynamic-theme-orb-1,
+.lite-mode .dynamic-theme-orb-2 {
+  display: none !important;
+}

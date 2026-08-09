@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <script>
+      window.onerror = function(message, source, lineno, colno, error) {
+        var el = document.createElement('div');
+        el.style.position = 'fixed';
+        el.style.top = '0';
+        el.style.left = '0';
+        el.style.width = '100%';
+        el.style.background = 'red';
+        el.style.color = 'white';
+        el.style.zIndex = '999999';
+        el.style.padding = '20px';
+        el.style.fontSize = '18px';
+        el.innerHTML = '<h2>JS Error:</h2><p>' + message + '</p><p>at ' + source + ':' + lineno + ':' + colno + '</p><pre>' + (error && error.stack ? error.stack : '') + '</pre>';
+        document.body.appendChild(el);
+      };
+      window.addEventListener('unhandledrejection', function(event) {
+        var el = document.createElement('div');
+        el.style.position = 'fixed';
+        el.style.bottom = '0';
+        el.style.left = '0';
+        el.style.width = '100%';
+        el.style.background = 'orange';
+        el.style.color = 'black';
+        el.style.zIndex = '999999';
+        el.style.padding = '20px';
+        el.style.fontSize = '18px';
+        el.innerHTML = '<h2>Unhandled Promise Rejection:</h2><pre>' + (event.reason && event.reason.stack ? event.reason.stack : event.reason) + '</pre>';
+        document.body.appendChild(el);
+      });
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+    <title>شاشتي TV - مركز الترفيه العائلي</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
