@@ -1,12 +1,13 @@
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Channel, Watchlist, WeeklyScheduleEntry, Mode } from '../types';
-import { MODES } from '../data';
+import { MODES, MODE_SECTIONS } from '../data';
+import { ModeConfig } from '../types';
 import { getChannelNowPlaying, autoAssignWatchlistsToChannels, NowPlayingInfo, getChannelSolidBg } from '../utils/channelEngine';
 import { findScheduleConflict, parseTimeToMinutes, formatMinutesToTime } from '../utils/scheduleUtils';
 import { 
   Tv, Play, Settings, Calendar, Sparkles, Plus, Check, Trash2, Clock, 
-  Flame, Heart, Smile, Skull, Compass, Zap, Users, Baby, Music, Globe, 
+  Flame, Heart, Smile, Skull, Compass, Zap, Users, Baby, Music, Globe, ChevronDown, 
   Film, Star, Shield, Layers, Radio, Mic, RefreshCw, X, ChevronRight, Shuffle, Pencil, AlertTriangle, Clapperboard,
   GripVertical, ArrowUp, ArrowDown, Repeat, Wand2, Copy, CopyCheck, Sliders, SlidersHorizontal, Download, Upload, BookOpen
 } from 'lucide-react';
@@ -133,6 +134,8 @@ interface ChannelsViewProps {
   schedules: WeeklyScheduleEntry[];
   onUpdateChannels: (channels: Channel[]) => void;
   onUpdateSchedules: (schedules: WeeklyScheduleEntry[]) => void;
+  customModes?: Record<string, ModeConfig>;
+  customCategories?: Record<string, string[]>;
   onPlay: (
     file?: any, 
     title?: string, 
@@ -162,6 +165,8 @@ const DAYS_OF_WEEK = [
 ];
 
 export const ChannelsView: React.FC<ChannelsViewProps> = ({
+  customModes = MODES,
+  customCategories = {},
   initialTab = 'channels',
   channels,
   watchlists,
@@ -178,6 +183,7 @@ export const ChannelsView: React.FC<ChannelsViewProps> = ({
 
   // Quick Link Modal State
   const [isQuickLinkModalOpen, setIsQuickLinkModalOpen] = useState(false);
+  const [expandedQuickLinkMode, setExpandedQuickLinkMode] = useState<{channelId: string, modeId: string} | null>(null);
   const [quickChannels, setQuickChannels] = useState<Channel[]>([]);
   const [quickSearchQuery, setQuickSearchQuery] = useState('');
 
@@ -1062,13 +1068,15 @@ export const ChannelsView: React.FC<ChannelsViewProps> = ({
             <header className="mb-6 sm:mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
               <div className="flex items-center gap-3 mb-2 flex-wrap">
-                <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center shadow-md">
-                  <Tv className="w-6 h-6 text-amber-600" />
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center shadow-md shrink-0">
+                    <Tv className="w-5 h-5 sm:w-6 sm:h-6 text-amber-600" />
+                  </div>
+                  <h1 className="text-3xl sm:text-5xl font-black tracking-tight text-slate-900 drop-shadow-sm">
+                    القنوات والراديو
+                  </h1>
                 </div>
-                <h1 className="text-3xl sm:text-5xl font-black tracking-tight text-slate-900 drop-shadow-sm">
-                  القنوات التلفزيونية ومحطات الراديو
-                </h1>
-                <span className="px-3 py-1.5 rounded-xl bg-amber-500/15 text-amber-800 border border-amber-400/40 text-xs font-black flex items-center gap-1.5 shadow-sm">
+                <span className="px-3 py-1.5 rounded-xl bg-amber-500/15 text-amber-800 border border-amber-400/40 text-xs font-black flex items-center gap-1.5 shadow-sm shrink-0">
                   <Sparkles className="w-3.5 h-3.5 text-amber-600" />
                   <span>بث مدمج مستمر 📺📻</span>
                 </span>
@@ -2029,15 +2037,8 @@ export const ChannelsView: React.FC<ChannelsViewProps> = ({
                   <div>
                     <label className="block text-xs font-bold text-amber-300 mb-1">الأوضاع المناسبة للقناة (إمكانية اختيار أكثر من وضع)</label>
                     <div className="flex flex-wrap gap-1.5 mt-1">
-                      {[
-                        { id: 'kids', name: '👶 أطفالي' },
-                        { id: 'night', name: '🌙 عائلتي' },
-                        { id: 'family', name: '👨‍👩‍👧‍👦 المسلسلات' },
-                        { id: 'cinema', name: '🎬 الأفلام' },
-                        { id: 'docs', name: '🌍 الوثائقيات' },
-                        { id: 'quran', name: '🕌 القرآن الكريم' },
-                        { id: 'music', name: '🎵 الموسيقى' },
-                      ].map((m) => {
+                      {Object.entries(customModes).map(([id, mode]) => {
+                        const m = { id, name: mode.title };
                         const selectedModes = editingChannel.modes || [];
                         const isSelected = selectedModes.includes(m.id as any);
                         return (
@@ -3142,50 +3143,177 @@ export const ChannelsView: React.FC<ChannelsViewProps> = ({
                         <div className="space-y-1.5 pt-2 border-t border-white/5">
                           <span className="text-[11px] font-bold text-amber-200 block">حدد الأنماط والأوضاع التشغيلية المرتبطة بهذه القناة:</span>
                           <div className="flex flex-wrap gap-1.5">
-                            {[
-                              { id: 'kids', label: 'أطفال 👶' },
-                              { id: 'family', label: 'مسلسلات 👨‍👩‍👧‍👦' },
-                              { id: 'cinema', label: 'سينما 🎬' },
-                              { id: 'docs', label: 'وثائقيات 🌍' },
-                              { id: 'quran', label: 'قرآن 📖' },
-                              { id: 'music', label: 'موسيقى 🎵' },
-                            ].map(m => {
+                            {Object.entries(customModes).map(([id, mode]) => {
+                              const m = { id, label: mode.title };
                               const isSelected = currentModes.includes(m.id as any);
+                              const isExpanded = expandedQuickLinkMode?.channelId === ch.id && expandedQuickLinkMode?.modeId === m.id;
+                              
+                              const baseCategories = MODE_SECTIONS[m.id as Mode] || [];
+                              const customCats = customCategories[m.id] || [];
+                              const allCategories = Array.from(new Set([...baseCategories, ...customCats]));
+                              
+                              // Check if any specific categories of this mode are selected
+                              const selectedCategories = ch.autoSyncCategories || [];
+                              const hasSpecificCategories = selectedCategories.some(cat => allCategories.includes(cat));
+                              const isAllSelected = isSelected && !hasSpecificCategories;
+
                               return (
-                                <button
-                                  key={m.id}
-                                  type="button"
-                                  onClick={() => {
-                                    const nextModes = isSelected
-                                      ? currentModes.filter(x => x !== m.id)
-                                      : [...currentModes, m.id as any];
+                                <div key={m.id} className="relative">
+                                  <div className="flex items-stretch">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const nextModes = isSelected && !hasSpecificCategories
+                                          ? currentModes.filter(x => x !== m.id) // Toggle off if "All" is currently selected
+                                          : [...currentModes.filter(x => x !== m.id), m.id as any]; // Ensure mode is added
 
-                                    // Auto sync matching watchlists for nextModes
-                                    const matchingWlIds = watchlists
-                                      .filter(w => {
-                                        const wMode = w.targetMode || w.section;
-                                        return nextModes.some(modeKey => wMode === modeKey || w.targetMode === modeKey || w.section === modeKey);
-                                      })
-                                      .map(w => w.id);
+                                        // Auto sync matching watchlists for nextModes (assuming ALL categories of this mode)
+                                        const nextAutoSyncCats = selectedCategories.filter(cat => !allCategories.includes(cat)); // Remove specific categories for this mode
 
-                                    setQuickChannels(prev => prev.map(item => {
-                                      if (item.id !== ch.id) return item;
-                                      return {
-                                        ...item,
-                                        modes: nextModes,
-                                        playlistIds: Array.from(new Set([...(item.playlistIds || []), ...matchingWlIds]))
-                                      };
-                                    }));
-                                  }}
-                                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border flex items-center gap-1.5 ${
-                                    isSelected
-                                      ? 'bg-amber-400 text-slate-950 border-amber-300 font-extrabold shadow-md'
-                                      : 'bg-white/5 text-white/70 border-white/10 hover:bg-white/15'
-                                  }`}
-                                >
-                                  <span>{m.label}</span>
-                                  {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
-                                </button>
+                                        const matchingWlIds = watchlists
+                                          .filter(w => {
+                                            const wMode = w.targetMode || w.section;
+                                            
+                                            // 1. Check modes
+                                            if (nextModes.some(modeKey => wMode === modeKey || w.targetMode === modeKey || w.section === modeKey)) return true;
+                                            
+                                            // 2. Check autoSyncCategories (from other modes)
+                                            if (nextAutoSyncCats.some(cat => w.section?.toLowerCase().includes(cat.toLowerCase()) || w.title?.toLowerCase().includes(cat.toLowerCase()))) return true;
+                                            
+                                            return false;
+                                          })
+                                          .map(w => w.id);
+
+                                        setQuickChannels(prev => prev.map(item => {
+                                          if (item.id !== ch.id) return item;
+                                          return {
+                                            ...item,
+                                            modes: nextModes,
+                                            autoSyncCategories: nextAutoSyncCats.length > 0 ? nextAutoSyncCats : undefined,
+                                            playlistIds: Array.from(new Set([...(item.playlistIds || []), ...matchingWlIds]))
+                                          };
+                                        }));
+                                      }}
+                                      className={`px-3 py-1.5 rounded-r-full text-xs font-bold transition-all cursor-pointer border-y border-r flex items-center gap-1.5 ${
+                                        isSelected
+                                          ? 'bg-amber-400 text-slate-950 border-amber-500 font-extrabold shadow-md'
+                                          : 'bg-white/5 text-white/70 border-white/10 hover:bg-white/15'
+                                      }`}
+                                    >
+                                      {isAllSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                                      <span>{m.label}</span>
+                                      {hasSpecificCategories && <span className="text-[10px] bg-slate-900 text-amber-400 px-1.5 rounded-full">*</span>}
+                                    </button>
+                                    
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setExpandedQuickLinkMode(isExpanded ? null : { channelId: ch.id!, modeId: m.id });
+                                      }}
+                                      className={`px-2 py-1.5 rounded-l-full border-y border-l transition-all cursor-pointer flex items-center justify-center ${
+                                        isSelected
+                                          ? 'bg-amber-400 hover:bg-amber-500 text-slate-950 border-amber-500 border-r border-r-amber-500/50'
+                                          : 'bg-white/5 hover:bg-white/20 text-white/70 border-white/10 border-r border-r-white/10'
+                                      }`}
+                                    >
+                                      <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                                    </button>
+                                  </div>
+
+                                  {isExpanded && (
+                                    <div className="absolute z-50 top-full mt-1 left-0 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-2 w-48 max-h-64 overflow-y-auto">
+                                      <div className="space-y-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const nextModes = [...currentModes.filter(x => x !== m.id), m.id as any];
+                                            const nextAutoSyncCats = selectedCategories.filter(cat => !allCategories.includes(cat));
+                                            
+                                            const matchingWlIds = watchlists.filter(w => {
+                                              const wMode = w.targetMode || w.section;
+                                              if (nextModes.some(modeKey => wMode === modeKey || w.targetMode === modeKey || w.section === modeKey)) return true;
+                                              if (nextAutoSyncCats.some(cat => w.section?.toLowerCase().includes(cat.toLowerCase()) || w.title?.toLowerCase().includes(cat.toLowerCase()))) return true;
+                                              return false;
+                                            }).map(w => w.id);
+
+                                            setQuickChannels(prev => prev.map(item => {
+                                              if (item.id !== ch.id) return item;
+                                              return {
+                                                ...item,
+                                                modes: nextModes,
+                                                autoSyncCategories: nextAutoSyncCats.length > 0 ? nextAutoSyncCats : undefined,
+                                                playlistIds: Array.from(new Set([...(item.playlistIds || []), ...matchingWlIds]))
+                                              };
+                                            }));
+                                            
+                                            setExpandedQuickLinkMode(null);
+                                          }}
+                                          className={`w-full text-right px-3 py-2 rounded-lg text-xs font-bold flex items-center justify-between transition-colors ${
+                                            isAllSelected ? 'bg-amber-400 text-slate-950' : 'text-white hover:bg-white/10'
+                                          }`}
+                                        >
+                                          <span>الكل</span>
+                                          {isAllSelected && <Check className="w-3.5 h-3.5" />}
+                                        </button>
+                                        
+                                        <div className="h-px bg-slate-700 my-1 mx-2"></div>
+                                        
+                                        {allCategories.filter(c => c !== 'الكل').map(category => {
+                                          const isCatSelected = selectedCategories.includes(category);
+                                          return (
+                                            <button
+                                              key={category}
+                                              type="button"
+                                              onClick={() => {
+                                                const nextModes = [...currentModes.filter(x => x !== m.id), m.id as any];
+                                                
+                                                let nextAutoSyncCats;
+                                                if (isCatSelected) {
+                                                  nextAutoSyncCats = selectedCategories.filter(c => c !== category);
+                                                } else {
+                                                  nextAutoSyncCats = [...selectedCategories.filter(c => c !== 'الكل' && !allCategories.includes(c)), category, ...selectedCategories.filter(c => allCategories.includes(c))];
+                                                }
+
+                                                // If all specific categories are deselected, we don't automatically select 'الكل' to avoid confusing jumps, but 'hasSpecificCategories' becomes false so 'الكل' will visually be selected if mode is in currentModes.
+                                                // Actually, if we deselect the last category, we might want to remove the mode? Let's just leave it, user can click mode button to toggle off.
+
+                                                const matchingWlIds = watchlists.filter(w => {
+                                                  const wMode = w.targetMode || w.section;
+                                                  // We ONLY match the modes if no specific categories are selected for that mode.
+                                                  // BUT wait, nextModes has 'm.id', so it would match EVERYTHING.
+                                                  // So we need to only match 'm.id' if nextAutoSyncCats has NO categories from allCategories!
+                                                  const hasSpecificForThisMode = nextAutoSyncCats.some(cat => allCategories.includes(cat));
+                                                  
+                                                  if (nextModes.filter(x => x !== m.id || !hasSpecificForThisMode).some(modeKey => wMode === modeKey || w.targetMode === modeKey || w.section === modeKey)) return true;
+                                                  
+                                                  if (nextAutoSyncCats.some(cat => w.section?.toLowerCase().includes(cat.toLowerCase()) || w.title?.toLowerCase().includes(cat.toLowerCase()))) return true;
+                                                  
+                                                  return false;
+                                                }).map(w => w.id);
+
+                                                setQuickChannels(prev => prev.map(item => {
+                                                  if (item.id !== ch.id) return item;
+                                                  return {
+                                                    ...item,
+                                                    modes: nextModes,
+                                                    autoSyncCategories: nextAutoSyncCats.length > 0 ? nextAutoSyncCats : undefined,
+                                                    playlistIds: Array.from(new Set([...(item.playlistIds || []), ...matchingWlIds]))
+                                                  };
+                                                }));
+                                              }}
+                                              className={`w-full text-right px-3 py-2 rounded-lg text-xs font-medium flex items-center justify-between transition-colors ${
+                                                isCatSelected ? 'bg-amber-500/20 text-amber-300' : 'text-white/80 hover:bg-white/10'
+                                              }`}
+                                            >
+                                              <span>{category}</span>
+                                              {isCatSelected && <Check className="w-3.5 h-3.5" />}
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
                               );
                             })}
                           </div>

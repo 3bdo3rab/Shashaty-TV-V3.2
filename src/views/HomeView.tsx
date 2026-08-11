@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Mode, Watchlist, ViewState } from '../types';
+import { Mode, Watchlist, ViewState, WeeklyScheduleEntry } from '../types';
 import { MODES } from '../data';
-import { Baby, Users, Moon, Film, Globe, BookOpen, Music, Sparkles, Tv, Play, RefreshCw, X, Clapperboard, Clock, Tag } from 'lucide-react';
+import { Baby, Users, Moon, Film, Globe, BookOpen, Music, Sparkles, Tv, Play, RefreshCw, X, Clapperboard, Clock, Tag, Calendar } from 'lucide-react';
 import { useDialog } from '../contexts/DialogContext';
+import { getEpisodeInspiredCover } from '../utils/coverHelper';
 
 interface HomeViewProps {
   currentMode: Mode;
   setCurrentMode: (mode: Mode) => void;
   customModes?: Record<Mode, { title: string; gradient: string; themeColor: string }>;
   watchlists?: Watchlist[];
+  schedules?: WeeklyScheduleEntry[];
   onPlay?: (
     file?: any, 
     title?: string, 
@@ -38,6 +40,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   setCurrentMode,
   customModes,
   watchlists = [],
+  schedules = [],
   onPlay,
   onNavigate
 }) => {
@@ -48,6 +51,13 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const [isSurpriseOpen, setIsSurpriseOpen] = useState(false);
   const [surpriseResult, setSurpriseResult] = useState<{ watchlist: Watchlist; file: any; epIndex: number } | null>(null);
   const [isSpinning, setIsSpinning] = useState(false);
+
+  const today = new Date().getDay();
+  const daysAr = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+  const todayName = daysAr[today];
+  const todaySchedules = schedules.filter(s => Number(s.dayOfWeek) === today)
+    .sort((a, b) => a.time.localeCompare(b.time));
+
 
   // Trigger Surprise Me
   const handleSurpriseMe = () => {
@@ -116,6 +126,102 @@ export const HomeView: React.FC<HomeViewProps> = ({
           )}
         </div>
       </div>
+
+      
+      {/* DAILY DIGEST WIDGET (ملخص البث المجدول اليوم) */}
+      {(
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-8 p-5 sm:p-6 rounded-3xl bg-zinc-950/80 border border-amber-400/50 backdrop-blur-2xl shadow-[0_0_50px_rgba(245,158,11,0.15)] relative overflow-hidden"
+        >
+          {/* Subtle Ambient Glow Mesh */}
+          <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-2 relative z-10">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-500/30 to-amber-400/10 border border-amber-400/40 flex items-center justify-center text-amber-300 shadow-md">
+                <Calendar className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-lg sm:text-xl font-black text-white flex items-center gap-2">
+                  <span>ملخص البث المجدول اليوم</span>
+                  <span className="text-xs px-2.5 py-0.5 rounded-lg bg-amber-400 text-black font-extrabold shadow-sm">
+                    يوم {todayName} ({todaySchedules.length} مواعيد)
+                  </span>
+                </h2>
+                <p className="text-xs text-white/70 font-medium mt-0.5">
+                  استعرض مواعيد سهرة اليوم المستوحاة من مكتبتك مع خيار التشغيل المباشر
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 relative z-10">
+            {todaySchedules.map((slot) => {
+              const linkedWl = watchlists?.find(w => w.id === slot.watchlistId || (slot.title && w.title?.toLowerCase().includes(slot.title.toLowerCase())));
+              const coverImg = linkedWl?.coverImage || getEpisodeInspiredCover(slot.title);
+
+              return (
+                <div
+                  key={slot.id}
+                  className="p-3.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 transition-all flex items-center gap-3 group hover:border-amber-400/40"
+                >
+                  {coverImg ? (
+                    <img src={coverImg} alt={slot.title} className="w-12 h-16 rounded-xl object-cover border border-white/20 shrink-0 shadow-md" />
+                  ) : (
+                    <div className="w-12 h-16 rounded-xl bg-amber-500/20 border border-amber-400/30 flex items-center justify-center shrink-0">
+                      <Tv className="w-6 h-6 text-amber-300" />
+                    </div>
+                  )}
+
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1 text-[11px] font-bold text-amber-300 mb-0.5">
+                      <Clock className="w-3.5 h-3.5" />
+                      <span>الساعة {slot.time}</span>
+                    </div>
+                    <h4 className="text-sm font-extrabold text-white truncate group-hover:text-amber-300 transition-colors">
+                      {slot.title}
+                    </h4>
+                    <p className="text-[11px] text-white/60 truncate font-medium mt-0.5">
+                      الحلقة {slot.episodeIndex !== undefined ? slot.episodeIndex + 1 : 1}
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      let wl = linkedWl;
+                      if (wl) {
+                        const allFiles = [...(wl.files || []), ...(wl.seasons?.flatMap(s => s.files || []) || [])];
+                        if (allFiles.length > 0) {
+                          const epIdx = slot.episodeIndex !== undefined ? slot.episodeIndex : (wl.lastWatchedIndex || 0);
+                          const safeIdx = Math.min(allFiles.length - 1, Math.max(0, epIdx));
+                          if (onPlay) {
+                            onPlay(allFiles[safeIdx], slot.title, wl.title, allFiles, safeIdx, undefined, wl.id, slot.startTimeOffset || 0);
+                          }
+                        }
+                      }
+                    }}
+                    className="p-2.5 rounded-xl bg-amber-400/20 hover:bg-amber-400 text-amber-300 hover:text-black transition-all cursor-pointer border border-amber-400/30 shrink-0 shadow-sm"
+                    title="تشغيل الحلقة الآن"
+                  >
+                    <Play className="w-4 h-4 fill-current" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+
+          {todaySchedules.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-6 text-white/50 relative z-10 bg-black/20 rounded-2xl border border-white/5 mt-4">
+              <Calendar className="w-10 h-10 mb-3 opacity-20" />
+              <p className="text-sm font-bold">لا توجد برامج أو مسلسلات مجدولة لليوم</p>
+              <p className="text-xs mt-1 opacity-70">يمكنك جدولة البث من قسم التلفزيون أو المكتبة</p>
+            </div>
+          )}
+        </motion.div>
+      )}
 
       {/* MODES SELECTION GRID */}
       <section className="mb-8">

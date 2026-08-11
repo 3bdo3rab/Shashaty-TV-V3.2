@@ -3,7 +3,24 @@ import { Watchlist, Session, Mode, ModeConfig, Channel, WeeklyScheduleEntry } fr
 import { MODES } from '../data';
 
 // Initialize the store file on disk. This is fully offline and persistent.
-const db = new LazyStore('shashaty_db.json', { autoSave: false });
+
+import { documentDir, join } from '@tauri-apps/api/path';
+
+let dbInstance: LazyStore;
+async function getDb(): Promise<LazyStore> {
+  if (!dbInstance) {
+    try {
+      const docsDir = await documentDir();
+      const dbPath = await join(docsDir, 'Shashaty TV', 'shashaty_db.json');
+      dbInstance = new LazyStore(dbPath, { autoSave: false });
+    } catch (e) {
+      console.warn('Failed to resolve Documents directory, falling back to default', e);
+      dbInstance = new LazyStore('shashaty_db.json', { autoSave: false });
+    }
+  }
+  return dbInstance;
+}
+
 
 // Helper to ensure paths are saved securely
 function sanitizeFileItem(item: any) {
@@ -40,7 +57,7 @@ export function sanitizeWatchlists(lists: Watchlist[]): Watchlist[] {
 export const store = {
   async getWatchlists(): Promise<Watchlist[]> {
     try {
-      const data = await db.get<Watchlist[]>('app_watchlists');
+      const data = await (await getDb()).get<Watchlist[]>('app_watchlists');
       return Array.isArray(data) ? data : [];
     } catch (e) {
       console.warn('Store getWatchlists failed:', e);
@@ -51,8 +68,8 @@ export const store = {
   async setWatchlists(watchlists: Watchlist[]) {
     try {
       const sanitized = sanitizeWatchlists(watchlists);
-      await db.set('app_watchlists', sanitized);
-      await db.save();
+      await (await getDb()).set('app_watchlists', sanitized);
+      await (await getDb()).save();
     } catch (e) {
       console.warn('Store setWatchlists failed:', e);
     }
@@ -60,7 +77,7 @@ export const store = {
 
   async getSessions(): Promise<Session[]> {
     try {
-      const data = await db.get<Session[]>('app_sessions');
+      const data = await (await getDb()).get<Session[]>('app_sessions');
       return Array.isArray(data) ? data : [];
     } catch (e) {
       console.warn('Store getSessions failed:', e);
@@ -70,8 +87,8 @@ export const store = {
 
   async setSessions(sessions: Session[]) {
     try {
-      await db.set('app_sessions', sessions);
-      await db.save();
+      await (await getDb()).set('app_sessions', sessions);
+      await (await getDb()).save();
     } catch (e) {
       console.warn('Store setSessions failed:', e);
     }
@@ -79,7 +96,7 @@ export const store = {
 
   async getCategories(): Promise<Record<Mode, string[]>> {
     try {
-      const data = await db.get<Record<Mode, string[]>>('app_custom_categories');
+      const data = await (await getDb()).get<Record<Mode, string[]>>('app_custom_categories');
       if (data && typeof data === 'object') return data;
     } catch (e) {
       console.warn('Store getCategories failed:', e);
@@ -91,8 +108,8 @@ export const store = {
 
   async setCategories(categories: Record<Mode, string[]>) {
     try {
-      await db.set('app_custom_categories', categories);
-      await db.save();
+      await (await getDb()).set('app_custom_categories', categories);
+      await (await getDb()).save();
     } catch (e) {
       console.warn('Store setCategories failed:', e);
     }
@@ -100,7 +117,7 @@ export const store = {
 
   async getCustomModes(): Promise<Record<Mode, ModeConfig>> {
     try {
-      const data = await db.get<Record<Mode, ModeConfig>>('app_custom_modes');
+      const data = await (await getDb()).get<Record<Mode, ModeConfig>>('app_custom_modes');
       if (data && typeof data === 'object') return data;
     } catch (e) {
       console.warn('Store getCustomModes failed:', e);
@@ -110,8 +127,8 @@ export const store = {
 
   async setCustomModes(modes: Record<Mode, ModeConfig>) {
     try {
-      await db.set('app_custom_modes', modes);
-      await db.save();
+      await (await getDb()).set('app_custom_modes', modes);
+      await (await getDb()).save();
     } catch (e) {
       console.warn('Store setCustomModes failed:', e);
     }
@@ -119,7 +136,7 @@ export const store = {
 
   async getChannels(): Promise<Channel[] | null> {
     try {
-      const data = await db.get<Channel[]>('app_channels');
+      const data = await (await getDb()).get<Channel[]>('app_channels');
       return Array.isArray(data) ? data : null;
     } catch (e) {
       console.warn('Store getChannels failed:', e);
@@ -129,30 +146,30 @@ export const store = {
 
   async setChannels(channels: Channel[]) {
     try {
-      await db.set('app_channels', channels);
-      await db.save();
+      await (await getDb()).set('app_channels', channels);
+      await (await getDb()).save();
     } catch (e) {
       console.warn('Store setChannels failed:', e);
     }
   },
 
   async setLastPlaybackState(state: any) {
-    await db.set('last_playback_state', state);
-    await db.save();
+    await (await getDb()).set('last_playback_state', state);
+    await (await getDb()).save();
   },
 
   async getLastPlaybackState(): Promise<any> {
-    return await db.get('last_playback_state');
+    return await (await getDb()).get('last_playback_state');
   },
 
   async clearLastPlaybackState() {
-    await db.delete('last_playback_state');
-    await db.save();
+    await (await getDb()).delete('last_playback_state');
+    await (await getDb()).save();
   },
 
   async getSchedules(): Promise<WeeklyScheduleEntry[]> {
     try {
-      const data = await db.get<WeeklyScheduleEntry[]>('app_schedules');
+      const data = await (await getDb()).get<WeeklyScheduleEntry[]>('app_schedules');
       return Array.isArray(data) ? data : [];
     } catch (e) {
       console.warn('Store getSchedules failed:', e);
@@ -162,8 +179,8 @@ export const store = {
 
   async setSchedules(schedules: WeeklyScheduleEntry[]) {
     try {
-      await db.set('app_schedules', schedules);
-      await db.save();
+      await (await getDb()).set('app_schedules', schedules);
+      await (await getDb()).save();
     } catch (e) {
       console.warn('Store setSchedules failed:', e);
     }
@@ -171,7 +188,7 @@ export const store = {
 
   async getMode(): Promise<Mode> {
     try {
-      const data = await db.get<Mode>('app_active_mode');
+      const data = await (await getDb()).get<Mode>('app_active_mode');
       return data || 'family';
     } catch (e) {
       return 'family';
@@ -180,8 +197,8 @@ export const store = {
 
   async setMode(mode: Mode) {
     try {
-      await db.set('app_active_mode', mode);
-      await db.save();
+      await (await getDb()).set('app_active_mode', mode);
+      await (await getDb()).save();
     } catch (e) {
       console.warn('Store setMode failed:', e);
     }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import Sidebar from './components/Sidebar';
 import HomeView from './views/HomeView';
@@ -10,7 +10,7 @@ import PlayerView from './views/PlayerView';
 import SettingsView from './views/SettingsView';
 import { ViewState, Mode, Watchlist, Session, ModeConfig, Channel, WeeklyScheduleEntry } from './types';
 import { autoAssignWatchlistsToChannels, getChannelNowPlaying } from './utils/channelEngine';
-import { MODES } from './data';
+import { MODES, MODE_SECTIONS } from './data';
 import { DEFAULT_CHANNELS } from './data/defaultChannels';
 import { store } from './utils/store';
 import { isCrossOriginIframe } from './utils/fileSystem';
@@ -93,7 +93,38 @@ export default function App() {
       
       setCurrentMode(mode);
       setSessions(sess);
-      setCustomCategories(cats);
+      let cleanCats = cats || {};
+      let needsSave = false;
+      const isSeeded = localStorage.getItem('seeded_defaults_v3');
+      
+      Object.keys(MODE_SECTIONS).forEach(m => {
+        if (!cleanCats[m]) cleanCats[m] = [];
+        
+        // Seed defaults if empty, OR if we haven't done the one-time seed v3 yet
+        if (cleanCats[m].length === 0 || !isSeeded) {
+          const defaults = MODE_SECTIONS[m].filter(s => s !== 'الكل');
+          defaults.forEach(def => {
+            if (!cleanCats[m].includes(def)) {
+              cleanCats[m].push(def);
+              needsSave = true;
+            }
+          });
+        }
+        
+        const unique = Array.from(new Set(cleanCats[m]));
+        if (unique.length !== cleanCats[m].length) {
+          cleanCats[m] = unique;
+          needsSave = true;
+        }
+      });
+      
+      if (!isSeeded) {
+        localStorage.setItem('seeded_defaults_v3', 'true');
+      }
+      setCustomCategories(cleanCats);
+      if (needsSave) {
+        store.setCategories(cleanCats).catch(console.error);
+      }
       const mergedModes = { ...MODES, ...(mods || {}) };
       if (mods?.family && !mods.family.bgImage) {
         mergedModes.family = { ...mergedModes.family, bgImage: MODES.family.bgImage };
@@ -434,6 +465,29 @@ export default function App() {
 
   const isBroadcastingView = currentView === 'channels' || currentView === 'schedule';
 
+  
+  const allComputedCategories = useMemo(() => {
+    const result = {};
+    
+    const computeForMode = (m) => {
+      const baseSections = (MODE_SECTIONS[m] || MODE_SECTIONS.family || []).filter(s => s !== 'الكل');
+      const wSecs = watchlists.filter(w => w.targetMode === m || (!w.targetMode && m !== 'kids')).map(w => w.section).filter(Boolean);
+      const saved = customCategories[m] || [];
+      
+      if (saved.length === 0) {
+        result[m] = Array.from(new Set([...baseSections, ...wSecs]));
+      } else {
+        const newSecs = wSecs.filter(s => !saved.includes(s));
+        result[m] = Array.from(new Set([...saved, ...newSecs]));
+      }
+    };
+
+    Object.keys(MODE_SECTIONS).forEach(computeForMode);
+    Object.keys(customModes).forEach(computeForMode);
+    
+    return result;
+  }, [watchlists, customCategories, customModes]);
+
   return (
     <div className="flex flex-col h-[100dvh] w-full overflow-hidden text-white font-sans selection:bg-white/30 dir-rtl">
       {/* Desktop Tauri TitleBar */}
@@ -547,9 +601,11 @@ export default function App() {
               >
                 {currentView === 'home' && (
                   <HomeView 
+                    schedules={schedules}
                     currentMode={currentMode} 
                     setCurrentMode={setCurrentMode} 
                     customModes={customModes}
+                    customCategories={customCategories}
                     watchlists={watchlists}
                     onPlay={handlePlay}
                     onNavigate={setCurrentView}
@@ -561,6 +617,8 @@ export default function App() {
                     channels={channels}
                     watchlists={watchlists}
                     schedules={schedules}
+                    customModes={customModes}
+                    customCategories={customCategories}
                     onUpdateChannels={setChannels}
                     onUpdateSchedules={setSchedules}
                     onPlay={handlePlay}
@@ -572,6 +630,8 @@ export default function App() {
                     channels={channels}
                     watchlists={watchlists}
                     schedules={schedules}
+                    customModes={customModes}
+                    customCategories={customCategories}
                     onUpdateChannels={setChannels}
                     onUpdateSchedules={setSchedules}
                     onPlay={handlePlay}
@@ -595,8 +655,9 @@ export default function App() {
                       store.setMode(newMode);
                     }}
                     customModes={customModes}
+                    customCategories={allComputedCategories[currentMode] || []}
                     onUpdateModeTitle={(mode, newTitle) => setCustomModes(prev => ({ ...prev, [mode]: { ...prev[mode], title: newTitle } }))}
-                    customCategories={customCategories[currentMode] || []}
+                    
                     allCustomCategories={customCategories}
                     onDeleteCategory={(cat) => handleDeleteCategory(currentMode, cat)}
                     onRenameCategory={(oldCat, newCat) => handleRenameCategory(currentMode, oldCat, newCat)}
@@ -613,9 +674,9 @@ export default function App() {
                     onUpdateWatchlist={handleUpdateWatchlist}
                     watchlists={watchlists}
                     currentMode={currentMode} 
-                    customCategories={customCategories[currentMode] || []}
-                    onAddCategory={(cat) => handleAddCategory(currentMode, cat)}
-                    onDeleteCategory={(cat) => handleDeleteCategory(currentMode, cat)}
+                    allCustomCategories={allComputedCategories}
+                    onAddCategory={handleAddCategory}
+                    onDeleteCategory={handleDeleteCategory}
                   />
                 )}
                 {currentView === 'sessions' && (
@@ -633,6 +694,7 @@ export default function App() {
                     currentMode={currentMode} 
                     setCurrentMode={setCurrentMode} 
                     customModes={customModes}
+                    customCategories={customCategories}
                     onUpdateModes={setCustomModes}
                   />
                 )}
@@ -690,6 +752,7 @@ export default function App() {
           schedules={schedules}
           onPlayChannel={handlePlayChannelFromPlayer}
           customModes={customModes}
+                    customCategories={customCategories}
         />
       )}
 

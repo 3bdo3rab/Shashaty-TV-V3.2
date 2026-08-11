@@ -481,7 +481,7 @@ export const buildWatchlistsFromFiles = (
   allFiles: File[], 
   rootFolderName: string, 
   targetMode: Mode = 'family', 
-  section: string = 'عام'
+  section: string = 'قسم عام'
 ): Watchlist[] => {
   if (!allFiles || allFiles.length === 0) return [];
 
@@ -494,153 +494,122 @@ export const buildWatchlistsFromFiles = (
     return parts.length > 0 ? parts : [file.name];
   };
 
-  const maxPartsLength = Math.max(...allFiles.map(f => getRelativeParts(f).length));
+  const rootFiles: File[] = [];
+  const seriesMap = new Map<string, Map<string, File[]>>();
+
+  allFiles.forEach(f => {
+    const parts = getRelativeParts(f);
+    if (parts.length === 1) {
+      rootFiles.push(f);
+    } else {
+      const seriesName = parts[0];
+      if (!seriesMap.has(seriesName)) seriesMap.set(seriesName, new Map());
+      
+      const seasons = seriesMap.get(seriesName)!;
+      if (parts.length === 2) {
+        const seasonName = "الملفات المباشرة";
+        if (!seasons.has(seasonName)) seasons.set(seasonName, []);
+        seasons.get(seasonName)!.push(f);
+      } else {
+        const seasonName = parts[1];
+        if (!seasons.has(seasonName)) seasons.set(seasonName, []);
+        seasons.get(seasonName)!.push(f);
+      }
+    }
+  });
+
+  const watchlists: Watchlist[] = [];
   
-  const topLevelFolders = Array.from(new Set(
-    allFiles
-      .map(f => getRelativeParts(f))
-      .filter(parts => parts.length > 1)
-      .map(parts => parts[0])
-  ));
-
-  const isMultiShowContainer = topLevelFolders.length > 1 || (topLevelFolders.length === 1 && maxPartsLength >= 3);
-
-  if (isMultiShowContainer) {
-    const showsMap = new Map<string, File[]>();
-    const rootDirectFiles: File[] = [];
-
-    allFiles.forEach(file => {
-      const parts = getRelativeParts(file);
-      if (parts.length > 1) {
-        const showName = parts[0];
-        if (!showsMap.has(showName)) showsMap.set(showName, []);
-        showsMap.get(showName)!.push(file);
-      } else {
-        rootDirectFiles.push(file);
-      }
-    });
-
-    const watchlists: Watchlist[] = [];
-
-    showsMap.forEach((showFiles, showName) => {
-      const sortedFiles = sortSmartMediaFiles(showFiles);
-      const seasonsMap = new Map<string, File[]>();
-      const looseFiles: File[] = [];
-
-      sortedFiles.forEach(f => {
-        const parts = getRelativeParts(f);
-        if (parts.length >= 3) {
-          const seasonName = parts[1];
-          if (!seasonsMap.has(seasonName)) seasonsMap.set(seasonName, []);
-          seasonsMap.get(seasonName)!.push(f);
-        } else {
-          looseFiles.push(f);
-        }
-      });
-
-      const seasons = Array.from(seasonsMap.entries())
-        .map(([name, sFiles]) => ({ name, files: sortSmartMediaFiles(sFiles) }))
-        .sort((a, b) => naturalCompare(a.name, b.name));
-
-      let finalSeasons = seasons.length > 0 ? seasons : undefined;
-      if (finalSeasons && looseFiles.length > 0) {
-        finalSeasons = [{ name: 'الملفات المباشرة', files: sortSmartMediaFiles(looseFiles) }, ...finalSeasons];
-      }
-
-      const coverFile = looseFiles[0] || sortedFiles[0];
-      const initialCover = coverFile ? getEpisodeInspiredCover(showName, section, sortedFiles) : '';
-
-      watchlists.push({
-        id: (Date.now() + Math.random() * 10000).toString(),
-        title: showName,
-        files: sortedFiles,
-        seasons: finalSeasons,
-        targetMode,
-        section,
-        coverImage: initialCover,
-        seriesCount: finalSeasons ? finalSeasons.length : 1,
-        episodesCount: sortedFiles.length,
-        folderName: showName,
-        folderPath: `/Media/${rootFolderName}/${showName}`,
-        lastWatched: '-',
-        progress: 0,
-        timeRemaining: `${sortedFiles.length * 45} دقيقة`,
-      });
-    });
-
-    if (rootDirectFiles.length > 0) {
-      const sortedRoot = sortSmartMediaFiles(rootDirectFiles);
-      sortedRoot.forEach((rf, idx) => {
-        const titleName = rf.name.replace(/\.[^/.]+$/, "");
-        watchlists.unshift({
-          id: (Date.now() + 9000 + idx + Math.random() * 100).toString(),
-          title: titleName,
-          files: [rf],
-          targetMode,
-          section,
-          coverImage: generateVideoCardPoster(titleName, rf.name),
-          seriesCount: 1,
-          episodesCount: 1,
-          isSingleFile: true,
-          folderName: rootFolderName,
-          folderPath: `/Media/${rootFolderName}`,
-          lastWatched: '-',
-          progress: 0,
-          timeRemaining: `فيديو مفرد 🎬`,
-        });
-      });
-    }
-
-    return watchlists;
-
-  } else {
-    // Single show folder
-    const seasonsMap = new Map<string, File[]>();
-    const looseFiles: File[] = [];
-
-    allFiles.forEach(f => {
-      const parts = getRelativeParts(f);
-      if (parts.length >= 2) {
-        const seasonName = parts[0];
-        if (!seasonsMap.has(seasonName)) seasonsMap.set(seasonName, []);
-        seasonsMap.get(seasonName)!.push(f);
-      } else {
-        looseFiles.push(f);
-      }
-    });
-
-    const seasons = Array.from(seasonsMap.entries())
-      .map(([name, sFiles]) => ({ name, files: sortSmartMediaFiles(sFiles) }))
-      .sort((a, b) => naturalCompare(a.name, b.name));
-
-    let finalSeasons = seasons.length > 0 ? seasons : undefined;
-    if (finalSeasons && looseFiles.length > 0) {
-      finalSeasons = [{ name: 'الملفات المباشرة', files: sortSmartMediaFiles(looseFiles) }, ...finalSeasons];
-    }
-
-    const sortedAllFiles = sortSmartMediaFiles(allFiles);
-    const coverFile = looseFiles[0] || sortedAllFiles[0];
-    const initialCover = coverFile ? getEpisodeInspiredCover(rootFolderName, section, sortedAllFiles) : '';
-
-    const isSingle = false; // Never treat as single file when importing a folder
-    return [{
-      id: (Date.now()).toString(),
-      title: isSingle ? sortedAllFiles[0].name.replace(/\.[^/.]+$/, "") : rootFolderName,
-      files: sortedAllFiles,
-      seasons: finalSeasons,
+  rootFiles.forEach((rf, idx) => {
+    const titleName = rf.name.replace(/\.[^/.]+$/, "");
+    watchlists.push({
+      id: (Date.now() + 9000 + idx + Math.random() * 100).toString(),
+      title: titleName,
+      files: [rf as any],
       targetMode,
-      section,
-      coverImage: initialCover,
-      seriesCount: finalSeasons ? finalSeasons.length : 1,
-      episodesCount: sortedAllFiles.length,
-      isSingleFile: isSingle,
+      section: 'مقاطع مفردة',
+      coverImage: generateVideoCardPoster(titleName, rf.name),
+      seriesCount: 1,
+      episodesCount: 1,
+      isSingleFile: true,
       folderName: rootFolderName,
       folderPath: `/Media/${rootFolderName}`,
       lastWatched: '-',
       progress: 0,
-      timeRemaining: isSingle ? 'فيديو مفرد 🎬' : `${sortedAllFiles.length * 45} دقيقة`,
-    }];
-  }
+      timeRemaining: 'مقطع مفرد',
+    });
+  });
+
+  seriesMap.forEach((seasonsMap, seriesTitle) => {
+    let totalFilesInSeries = 0;
+    const allFilesList: File[] = [];
+    seasonsMap.forEach(sFiles => {
+      totalFilesInSeries += sFiles.length;
+      allFilesList.push(...sFiles);
+    });
+
+    if (totalFilesInSeries === 1) {
+      const singleFile = allFilesList[0];
+      watchlists.push({
+        id: (Date.now() + Math.random() * 10000).toString(),
+        title: seriesTitle,
+        section,
+        targetMode,
+        coverImage: generateVideoCardPoster(seriesTitle, singleFile.name),
+        seriesCount: 1,
+        episodesCount: 1,
+        lastWatched: '-',
+        progress: 0,
+        timeRemaining: 'مقطع مفرد',
+        isSingleFile: true,
+        files: [singleFile as any],
+        folderPath: `/Media/${rootFolderName}/${seriesTitle}`,
+        folderName: seriesTitle
+      });
+      return;
+    }
+
+    const seasonsArray: any[] = [];
+    let directFiles: File[] = [];
+
+    seasonsMap.forEach((sFiles, sName) => {
+      if (sName === "الملفات المباشرة") {
+        directFiles = sortSmartMediaFiles(sFiles);
+      } else {
+        seasonsArray.push({
+          name: sName,
+          files: sortSmartMediaFiles(sFiles)
+        });
+      }
+    });
+
+    seasonsArray.sort((a, b) => naturalCompare(a.name, b.name));
+
+    const totalEps = directFiles.length + seasonsArray.reduce((acc, s) => acc + s.files.length, 0);
+    const sortedAllFiles = sortSmartMediaFiles(allFilesList);
+    const coverFile = directFiles[0] || sortedAllFiles[0];
+    const initialCover = coverFile ? getEpisodeInspiredCover(seriesTitle, section, sortedAllFiles as any) : '';
+
+    watchlists.push({
+      id: (Date.now() + Math.random() * 10000).toString(),
+      title: seriesTitle,
+      files: directFiles as any[],
+      seasons: seasonsArray,
+      targetMode,
+      section,
+      coverImage: initialCover,
+      seriesCount: seasonsArray.length > 0 ? seasonsArray.length : 1,
+      episodesCount: totalEps,
+      isSingleFile: false,
+      folderName: seriesTitle,
+      folderPath: `/Media/${rootFolderName}/${seriesTitle}`,
+      lastWatched: '-',
+      progress: 0,
+      timeRemaining: `${totalEps * 45} دقيقة`,
+    });
+  });
+
+  return watchlists;
 };
 
 interface CreateWatchlistViewProps {
@@ -648,9 +617,10 @@ interface CreateWatchlistViewProps {
   onUpdateWatchlist?: (id: string, updates: Partial<Watchlist>) => void;
   watchlists?: Watchlist[];
   currentMode?: Mode;
+  allCustomCategories?: Record<string, string[]>;
   customCategories?: string[];
-  onAddCategory?: (category: string) => void;
-  onDeleteCategory?: (category: string) => void;
+  onAddCategory?: (mode: string, category: string) => void;
+  onDeleteCategory?: (mode: string, category: string) => void;
 }
 
 export const CreateWatchlistView: React.FC<CreateWatchlistViewProps> = ({ 
@@ -658,7 +628,7 @@ export const CreateWatchlistView: React.FC<CreateWatchlistViewProps> = ({
   onUpdateWatchlist,
   watchlists = [],
   currentMode = 'family',
-  customCategories = [],
+  allCustomCategories = {},
   onAddCategory,
   onDeleteCategory
 }) => {
@@ -686,11 +656,8 @@ export const CreateWatchlistView: React.FC<CreateWatchlistViewProps> = ({
 
   const isKidsMode = selectedMode === 'kids';
   
-  // Base categories from MODE_SECTIONS (excluding 'الكل') + customCategories
-  const baseSections = (MODE_SECTIONS[selectedMode] || MODE_SECTIONS.family).filter(s => s !== 'الكل');
-  
-  // Unique merged categories list
-  const categories = Array.from(new Set([...baseSections, ...customCategories]));
+  const categoriesForMode = allCustomCategories[selectedMode] || [];
+  const categories = categoriesForMode.length > 0 ? categoriesForMode : (MODE_SECTIONS[selectedMode] || MODE_SECTIONS.family).filter(s => s !== 'الكل');
 
   const [selectedCategory, setSelectedCategory] = useState(categories[0] || 'عام');
 
@@ -774,7 +741,7 @@ export const CreateWatchlistView: React.FC<CreateWatchlistViewProps> = ({
     if (categories.length > 0 && !categories.includes(selectedCategory)) {
       setSelectedCategory(categories[0]);
     }
-  }, [selectedMode, customCategories]);
+  }, [selectedMode, categoriesForMode]);
 
   const checkIfParentFolder = async (folderName: string): Promise<boolean> => {
     if (!folderName) return true;
@@ -849,7 +816,7 @@ export const CreateWatchlistView: React.FC<CreateWatchlistViewProps> = ({
     const trimmed = newCategoryInput.trim();
     if (!trimmed) return;
     if (onAddCategory) {
-      onAddCategory(trimmed);
+      onAddCategory(selectedMode, trimmed);
     }
     setSelectedCategory(trimmed);
     setNewCategoryInput('');
@@ -1157,7 +1124,7 @@ export const CreateWatchlistView: React.FC<CreateWatchlistViewProps> = ({
             {/* List of Categories */}
             <div className="flex flex-wrap gap-2.5 max-h-56 overflow-y-auto no-scrollbar">
               {categories.map((tag) => {
-                const isCustom = customCategories.includes(tag);
+                const isCustom = categoriesForMode.includes(tag);
                 const isSelected = selectedCategory === tag;
                 return (
                   <div 
@@ -1180,7 +1147,7 @@ export const CreateWatchlistView: React.FC<CreateWatchlistViewProps> = ({
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          onDeleteCategory(tag);
+                          onDeleteCategory(selectedMode, tag);
                           if (selectedCategory === tag && categories.length > 1) {
                             setSelectedCategory(categories.find(c => c !== tag) || 'عام');
                           }
@@ -1331,9 +1298,9 @@ export const CreateWatchlistView: React.FC<CreateWatchlistViewProps> = ({
         isOpen={isSingleFileModalOpen}
         onClose={() => setIsSingleFileModalOpen(false)}
         currentMode={selectedMode}
-        customCategories={customCategories}
+        customCategories={categoriesForMode}
         watchlists={watchlists}
-        onAddCategory={onAddCategory!}
+        onAddCategory={(cat) => onAddCategory && onAddCategory(selectedMode, cat)}
         onAddWatchlist={onAddWatchlist}
         onUpdateWatchlist={onUpdateWatchlist}
       />

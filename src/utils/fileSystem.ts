@@ -31,126 +31,159 @@ export async function processMediaDirectory(
   onProgress?: (current: number, total: number, statusText: string) => void
 ): Promise<Watchlist[]> {
   try {
-    if (onProgress) onProgress(0, 100, 'جاري فحص مسارات الملفات من القرص...');
-    console.log(`processMediaDirectory called with dirPath: ${dirPath}`);
-    // Call our Rust command to recursively scan the directory
+    if (onProgress) onProgress(0, 100, 'جاري قراءة المجلدات والملفات من النظام...');
     const scannedFiles: any[] = await invoke('scan_media_directory', { path: dirPath });
-    console.log(`processMediaDirectory received ${scannedFiles.length} files from Rust.`);
     
     if (scannedFiles.length === 0) return [];
 
-    if (onProgress) onProgress(10, 100, `تم العثور على ${scannedFiles.length} ملف، جاري المعالجة...`);
+    if (onProgress) onProgress(10, 100, `تم العثور على ${scannedFiles.length} ملف، جاري تنظيمها...`);
 
-    // Group files into logical series and seasons by parsing their paths
-    const groups = new Map<string, { files: VideoFile[], seasons: Map<string, VideoFile[]> }>();
+    const rootGroupName = dirPath.split(/[\/\\]/).pop() || 'مجلد جديد';
     
-    // Default group for files at the root of the selected directory
-    const rootGroupName = dirPath.split(/[/\\]/).pop() || 'مجلد جديد';
+    // rootFiles will become single-file watchlists
+    const rootFiles: VideoFile[] = [];
     
-    // Helper to determine if a folder name is likely a season
-    const isSeasonFolder = (name: string) => /season|موسم|جزء|s\d+|arc|book|volume|chapter|قسم|فصل|مجلد/i.test(name);
+    // seriesMap stores files by SeriesName -> SeasonName -> VideoFile[]
+    const seriesMap = new Map<string, Map<string, VideoFile[]>>();
 
     scannedFiles.forEach(f => {
-      // Find the relative path inside dirPath
       let relPath = f.path.replace(dirPath, '');
       if (relPath.startsWith('/') || relPath.startsWith('\\')) {
         relPath = relPath.substring(1);
       }
       
-      const parts = relPath.split(/[/\\]/);
-      let seriesName = rootGroupName;
-      let seasonName = '';
-
-      if (parts.length === 1) {
-        // file is in root directory
-        seriesName = rootGroupName;
-      } else {
-        // Find if any part is a season folder
-        let seasonIdx = -1;
-        for (let i = 0; i < parts.length - 1; i++) { // exclude the file name itself
-          if (isSeasonFolder(parts[i])) {
-            seasonIdx = i;
-            break;
-          }
-        }
-
-        if (seasonIdx === 0) {
-          // e.g. dirPath/Season 1/Ep1.mp4
-          seriesName = rootGroupName;
-          seasonName = parts[0];
-        } else if (seasonIdx > 0) {
-          // e.g. dirPath/Breaking Bad/Season 1/Ep1.mp4 -> Series: Breaking Bad, Season: Season 1
-          seriesName = parts[seasonIdx - 1];
-          seasonName = parts[seasonIdx];
-        } else {
-          // No season folder found. Group by the top-level subfolder inside dirPath.
-          // e.g. dirPath/Anime/Naruto/Ep1.mp4 -> Series: Anime (or Naruto depending on structure, parts[0] is the safest for root-level grouping).
-          seriesName = parts[0];
-        }
-      }
+      const parts = relPath.split(/[\/\\]/);
       
       const vf: VideoFile = {
         name: f.name,
         size: f.size,
         type: f.file_type,
         absolutePath: f.path,
-        title: f.name.replace(/\.[^/.]+$/, "") // remove extension
+        title: f.name.replace(/\.[^/.]+$/, "")
       };
 
-      if (!groups.has(seriesName)) {
-        groups.set(seriesName, { files: [], seasons: new Map() });
-      }
-      
-      if (seasonName) {
-        const series = groups.get(seriesName)!;
-        if (!series.seasons.has(seasonName)) {
-          series.seasons.set(seasonName, []);
-        }
-        series.seasons.get(seasonName)!.push(vf);
+      if (parts.length === 1) {
+        // Direct file in the root folder -> Single item
+        rootFiles.push(vf);
       } else {
-        groups.get(seriesName)!.files.push(vf);
+        // Subfolder -> Series
+        const seriesName = parts[0];
+        if (!seriesMap.has(seriesName)) {
+          seriesMap.set(seriesName, new Map());
+        }
+        
+        const seasons = seriesMap.get(seriesName)!;
+        
+        if (parts.length === 2) {
+          // Direct file inside series folder -> "الملفات المباشرة"
+          const seasonName = "الملفات المباشرة";
+          if (!seasons.has(seasonName)) seasons.set(seasonName, []);
+          seasons.get(seasonName)!.push(vf);
+        } else {
+          // File inside season folder
+          const seasonName = parts[1];
+          if (!seasons.has(seasonName)) seasons.set(seasonName, []);
+          seasons.get(seasonName)!.push(vf);
+        }
       }
     });
 
     const watchlists: Watchlist[] = [];
     
-    let processedGroups = 0;
-    const totalGroups = groups.size;
+    // 1. Process root files
+    rootFiles.forEach(vf => {
+      const existing = existingWatchlists.find(w => w.folderPath === dirPath && w.title === vf.title);
+      if (existing) {
+        watchlists.push({ ...existing, files: [vf], isSingleFile: true });
+      } else {
+        watchlists.push({
+          id: crypto.randomUUID(),
+          title: vf.title,
+          section: 'مقاطع مفردة',
+          coverImage: '',
+          seriesCount: 1,
+          episodesCount: 1,
+          lastWatched: new Date().toISOString(),
+          progress: 0,
+          timeRemaining: '',
+          targetMode: '',
+          isSingleFile: true,
+          files: [vf],
+          folderPath: dirPath,
+          folderName: rootGroupName
+        });
+      }
+    });
 
-    for (const [seriesTitle, groupData] of groups.entries()) {
+    let processedGroups = 0;
+    const totalGroups = seriesMap.size;
+
+    // 2. Process series
+    for (const [seriesTitle, seasonsMap] of seriesMap.entries()) {
       if (onProgress) {
-        // Base progress is 20%, remaining 80% is divided by total groups
         const percent = 20 + Math.floor((processedGroups / totalGroups) * 80);
-        onProgress(percent, 100, `جاري استيراد وتجهيز: ${seriesTitle} (${processedGroups + 1} من ${totalGroups})`);
+        onProgress(percent, 100, `جاري تنظيم مسلسل: ${seriesTitle} (${processedGroups + 1} من ${totalGroups})`);
       }
       processedGroups++;
 
-      const allFiles = [
-        ...groupData.files, 
-        ...Array.from(groupData.seasons.values()).flat()
-      ];
-      if (allFiles.length === 0) continue;
-      
-      const sortedFiles = sortSmartMediaFiles(groupData.files);
-      
-      // format seasons
-      const seasonsArray = Array.from(groupData.seasons.entries()).map(([sName, sFiles]) => ({
-        name: sName,
-        files: sortSmartMediaFiles(sFiles)
-      }));
-      // sort seasons by name
-      seasonsArray.sort((a, b) => naturalCompare(a.name, b.name));
+      // Count total files in this series
+      let totalFilesInSeries = 0;
+      const allFilesList: VideoFile[] = [];
+      for (const sFiles of seasonsMap.values()) {
+        totalFilesInSeries += sFiles.length;
+        allFilesList.push(...sFiles);
+      }
 
-      // Check for duplicate in existing watchlists (same folder path and group title)
-      const existing = existingWatchlists.find(w => 
-        w.folderPath === dirPath && w.title === seriesTitle
-      );
+      const existing = existingWatchlists.find(w => w.folderPath === dirPath && w.title === seriesTitle);
+
+      if (totalFilesInSeries === 1) {
+        // Special rule: Folder with exactly 1 file -> single playlist
+        const singleFile = allFilesList[0];
+        if (existing) {
+          watchlists.push({ ...existing, files: [singleFile], seasons: undefined, isSingleFile: true, episodesCount: 1 });
+        } else {
+          watchlists.push({
+            id: crypto.randomUUID(),
+            title: seriesTitle,
+            section: rootGroupName,
+            coverImage: '',
+            seriesCount: 1,
+            episodesCount: 1,
+            lastWatched: new Date().toISOString(),
+            progress: 0,
+            timeRemaining: '',
+            targetMode: '',
+            isSingleFile: true,
+            files: [singleFile],
+            folderPath: dirPath,
+            folderName: rootGroupName
+          });
+        }
+        continue;
+      }
+
+      // Normal series with multiple files
+      const seasonsArray = [];
+      let directFiles: VideoFile[] = [];
+
+      for (const [sName, sFiles] of seasonsMap.entries()) {
+        if (sName === "الملفات المباشرة") {
+          directFiles = sortSmartMediaFiles(sFiles);
+        } else {
+          seasonsArray.push({
+            name: sName,
+            files: sortSmartMediaFiles(sFiles)
+          });
+        }
+      }
+
+      seasonsArray.sort((a, b) => naturalCompare(a.name, b.name));
 
       if (existing) {
         // Merge files
         const fileMap = new Map();
         (existing.files || []).forEach(f => fileMap.set((f as any).absolutePath || f.name, f));
-        sortedFiles.forEach(f => fileMap.set((f as any).absolutePath || f.name, f));
+        directFiles.forEach(f => fileMap.set((f as any).absolutePath || f.name, f));
         const mergedFiles = sortSmartMediaFiles(Array.from(fileMap.values()));
         
         // Merge seasons
@@ -176,17 +209,17 @@ export async function processMediaDirectory(
           files: mergedFiles,
           seasons: mergedSeasons,
           episodesCount: totalEps,
+          isSingleFile: false
         });
       } else {
-        // Extract cover image iteratively using 3-level strategy
         let coverImage = '';
         try {
-          coverImage = await extractFirstValidThumbnail(allFiles);
+          coverImage = await extractFirstValidThumbnail(allFilesList);
         } catch (e) {
           console.warn('Could not extract cover for', seriesTitle, e);
         }
         
-        const totalEps = sortedFiles.length + seasonsArray.reduce((acc, s) => acc + s.files.length, 0);
+        const totalEps = directFiles.length + seasonsArray.reduce((acc, s) => acc + s.files.length, 0);
         
         watchlists.push({
           id: crypto.randomUUID(),
@@ -198,21 +231,21 @@ export async function processMediaDirectory(
           lastWatched: new Date().toISOString(),
           progress: 0,
           timeRemaining: '',
+          targetMode: '',
+          isSingleFile: false,
+          files: directFiles,
+          seasons: seasonsArray,
           folderPath: dirPath,
-          folderName: rootGroupName,
-          files: sortedFiles,
-          seasons: seasonsArray.length > 0 ? seasonsArray : undefined
+          folderName: rootGroupName
         });
       }
     }
 
-    // Sort watchlists naturally by title
-    watchlists.sort((a, b) => naturalCompare(a.title, b.title));
-
-    if (onProgress) onProgress(100, 100, 'تم الاستيراد بنجاح! جاري عرض القوائم...');
+    if (onProgress) onProgress(100, 100, 'اكتملت العملية بنجاح!');
     return watchlists;
   } catch (err) {
-    console.error('Failed to scan directory:', err);
-    throw err;
+    console.error('processMediaDirectory error:', err);
+    if (onProgress) onProgress(100, 100, 'حدث خطأ أثناء قراءة المجلدات.');
+    return [];
   }
 }

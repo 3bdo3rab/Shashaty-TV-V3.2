@@ -1237,6 +1237,11 @@ const [isPlaying, setIsPlaying] = useState(true);
   // Global Keyboard Shortcuts Listener
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if floating (user should be interacting with main app, not player)
+      if (isFloatingMode) {
+        return;
+      }
+
       // Ignore if active inside editable input
       if (
         document.activeElement?.tagName === 'INPUT' ||
