@@ -62,6 +62,7 @@ export interface Channel {
   playbackOrder?: 'sequential' | 'random';
   autoSyncEnabled?: boolean; // enable automatic syncing of new libraries matching mode/categories
   autoSyncCategories?: string[]; // list of section/category names to auto sync
+  selectedFiles?: Record<string, string[]>; // Watchlist ID -> array of selected file absolute paths
 }
 
 export interface WeeklyScheduleEntry {
@@ -71,6 +72,7 @@ export interface WeeklyScheduleEntry {
   durationMinutes?: number; // e.g. 120
   transitionType?: 'episode' | 'time';
   transitionMinutes?: number;
+  transitionEpisodes?: number;
   endTime?: string; // e.g. "22:00"
   title: string;
   channelId?: string;
@@ -111,6 +113,7 @@ export interface Session {
   breakBetweenItems: number; // minutes
   breakBetweenLoops: number; // minutes
   selectedWatchlistIds?: string[];
+  selectedFiles?: Record<string, string[]>;
   scheduleSlots?: ScheduleSlot[];
   strategy?: 'alternate' | 'random' | 'sequential' | 'schedule';
   lastWatchedIndex?: number;

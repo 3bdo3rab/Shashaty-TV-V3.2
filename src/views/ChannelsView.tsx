@@ -3,11 +3,11 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Channel, Watchlist, WeeklyScheduleEntry, Mode } from '../types';
 import { MODES, MODE_SECTIONS } from '../data';
 import { ModeConfig } from '../types';
-import { getChannelNowPlaying, autoAssignWatchlistsToChannels, NowPlayingInfo, getChannelSolidBg } from '../utils/channelEngine';
+import { getChannelNowPlaying, autoAssignWatchlistsToChannels, NowPlayingInfo, getChannelSolidBg, groupSingleFiles } from '../utils/channelEngine';
 import { findScheduleConflict, parseTimeToMinutes, formatMinutesToTime } from '../utils/scheduleUtils';
 import { 
   Tv, Play, Settings, Calendar, Sparkles, Plus, Check, Trash2, Clock, 
-  Flame, Heart, Smile, Skull, Compass, Zap, Users, Baby, Music, Globe, ChevronDown, 
+  Flame, Heart, Smile, Skull, Compass, Zap, Users, Baby, Music, Globe, ChevronDown, ChevronUp, Minus,
   Film, Star, Shield, Layers, Radio, Mic, RefreshCw, X, ChevronRight, Shuffle, Pencil, AlertTriangle, Clapperboard,
   GripVertical, ArrowUp, ArrowDown, Repeat, Wand2, Copy, CopyCheck, Sliders, SlidersHorizontal, Download, Upload, BookOpen
 } from 'lucide-react';
@@ -130,7 +130,7 @@ export function getWatchlistsForCategory(watchlists: Watchlist[], mode: Mode, sl
 interface ChannelsViewProps {
   initialTab?: 'channels' | 'schedule';
   channels: Channel[];
-  watchlists: Watchlist[];
+  rawWatchlists: Watchlist[];
   schedules: WeeklyScheduleEntry[];
   onUpdateChannels: (channels: Channel[]) => void;
   onUpdateSchedules: (schedules: WeeklyScheduleEntry[]) => void;
@@ -169,17 +169,19 @@ export const ChannelsView: React.FC<ChannelsViewProps> = ({
   customCategories = {},
   initialTab = 'channels',
   channels,
-  watchlists,
+  rawWatchlists,
   schedules,
   onUpdateChannels,
   onUpdateSchedules,
   onPlay
 }) => {
+  const watchlists = React.useMemo(() => groupSingleFiles(rawWatchlists), [rawWatchlists]);
   const { showAlert, showConfirm } = useDialog();
   const [activeTab, setActiveTab] = useState<'channels' | 'schedule'>(initialTab);
   const [filterType, setFilterType] = useState<'all' | 'favorites' | 'movies' | 'series' | 'radio'>('all');
   const [editingChannel, setEditingChannel] = useState<Channel | null>(null);
   const [showAllWatchlistsInModal, setShowAllWatchlistsInModal] = useState(false);
+  const [expandedWatchlists, setExpandedWatchlists] = useState<string[]>([]);
 
   // Quick Link Modal State
   const [isQuickLinkModalOpen, setIsQuickLinkModalOpen] = useState(false);
@@ -200,6 +202,7 @@ export const ChannelsView: React.FC<ChannelsViewProps> = ({
   const [slotTime, setSlotTime] = useState('20:00');
   const [slotTransitionType, setSlotTransitionType] = useState<'episode' | 'time'>('episode');
   const [slotDurationMinutes, setSlotDurationMinutes] = useState<number>(60);
+  const [slotTransitionEpisodes, setSlotTransitionEpisodes] = useState<number>(1);
   const [slotTitle, setSlotTitle] = useState('');
   const [slotSourceType, setSlotSourceType] = useState<'channel' | 'watchlist'>('channel');
   const [slotChannelId, setSlotChannelId] = useState('');
@@ -428,15 +431,56 @@ export const ChannelsView: React.FC<ChannelsViewProps> = ({
   };
 
   // Toggle watchlist link for channel
-  const handleToggleWatchlistInChannel = (watchlistId: string) => {
+  const handleToggleWatchlistInChannel = (watchlistId: string, forceState?: boolean) => {
     if (!editingChannel) return;
     const currentList = editingChannel.playlistIds || [];
     const exists = currentList.includes(watchlistId);
+    
+    if (forceState !== undefined) {
+      if (forceState && !exists) {
+        handleUpdateEditingChannelField('playlistIds', [...currentList, watchlistId]);
+      } else if (!forceState && exists) {
+        handleUpdateEditingChannelField('playlistIds', currentList.filter(id => id !== watchlistId));
+      }
+      return;
+    }
+    
     const updatedIds = exists
       ? currentList.filter(id => id !== watchlistId)
       : [...currentList, watchlistId];
 
     handleUpdateEditingChannelField('playlistIds', updatedIds);
+  };
+
+  const handleToggleWatchlistAccordion = (watchlistId: string) => {
+    setExpandedWatchlists(prev => 
+      prev.includes(watchlistId) ? prev.filter(id => id !== watchlistId) : [...prev, watchlistId]
+    );
+  };
+
+  const handleToggleFileInWatchlist = (watchlistId: string, filePath: string) => {
+    if (!editingChannel) return;
+    const currentSelected = editingChannel.selectedFiles || {};
+    const watchlistSelected = currentSelected[watchlistId] || [];
+    
+    const isFileSelected = watchlistSelected.includes(filePath);
+    let newWatchlistSelected: string[];
+    
+    if (isFileSelected) {
+      newWatchlistSelected = watchlistSelected.filter(p => p !== filePath);
+    } else {
+      newWatchlistSelected = [...watchlistSelected, filePath];
+    }
+    
+    handleUpdateEditingChannelField('selectedFiles', {
+      ...currentSelected,
+      [watchlistId]: newWatchlistSelected
+    });
+    
+    // Auto-check the watchlist if a file is selected inside it
+    if (!isFileSelected && newWatchlistSelected.length > 0) {
+      handleToggleWatchlistInChannel(watchlistId, true);
+    }
   };
 
   // Create a brand new custom channel
@@ -809,6 +853,7 @@ export const ChannelsView: React.FC<ChannelsViewProps> = ({
     setSlotTime('20:00');
     setSlotTransitionType('time');
     setSlotDurationMinutes(60);
+    setSlotTransitionEpisodes(1);
     const defaultChan = resolvedChannels.length > 0 ? resolvedChannels[0] : null;
     setSlotChannelId(defaultChan ? defaultChan.id : '');
     setSlotTitle(defaultChan ? defaultChan.title : '');
@@ -827,6 +872,7 @@ export const ChannelsView: React.FC<ChannelsViewProps> = ({
     setSlotTime(slot.time);
     setSlotTransitionType(slot.transitionType || 'time');
     setSlotDurationMinutes(slot.durationMinutes || slot.transitionMinutes || 60);
+    setSlotTransitionEpisodes(slot.transitionEpisodes || 1);
     const targetChanId = slot.channelId || (resolvedChannels.length > 0 ? resolvedChannels[0].id : '');
     const foundChan = resolvedChannels.find(c => c.id === targetChanId);
     setSlotChannelId(targetChanId);
@@ -859,7 +905,7 @@ export const ChannelsView: React.FC<ChannelsViewProps> = ({
       return;
     }
 
-    const durMins = Math.max(5, slotDurationMinutes || 60);
+    let durMins = Math.max(5, slotDurationMinutes || 60);
 
     // Check time overlap conflicts with existing slots on the same day (excluding currently edited slot)
     const conflict = findScheduleConflict(selectedDay, slotTime, durMins, schedules, editingSlot?.id);
@@ -870,15 +916,17 @@ export const ChannelsView: React.FC<ChannelsViewProps> = ({
     }
 
     const startM = parseTimeToMinutes(slotTime);
+    durMins = slotTransitionType === 'time' ? Math.max(5, slotDurationMinutes || 60) : 60; // default to 60 for visual calendar
     const endM = startM + durMins;
 
     const updatedEntry: WeeklyScheduleEntry = {
       id: editingSlot ? editingSlot.id : Date.now().toString(),
       dayOfWeek: selectedDay,
       time: slotTime,
-      transitionType: 'time',
-      durationMinutes: durMins,
-      transitionMinutes: durMins,
+      transitionType: slotTransitionType,
+      durationMinutes: slotTransitionType === 'time' ? durMins : undefined,
+      transitionMinutes: slotTransitionType === 'time' ? durMins : undefined,
+      transitionEpisodes: slotTransitionType === 'episode' ? slotTransitionEpisodes : undefined,
       endTime: formatMinutesToTime(endM),
       title: finalTitle,
       channelId: slotSourceType === 'channel' ? slotChannelId : undefined,
@@ -2217,14 +2265,15 @@ export const ChannelsView: React.FC<ChannelsViewProps> = ({
                 {/* Watchlists Selection Section */}
                 {(() => {
                   const selectedModes = editingChannel.modes || [];
+                  const groupedWatchlists = groupSingleFiles(watchlists);
                   const displayWatchlists = showAllWatchlistsInModal
-                    ? watchlists
+                    ? groupedWatchlists
                     : selectedModes.length > 0
-                    ? watchlists.filter(wl => {
+                    ? groupedWatchlists.filter(wl => {
                         const wlMode = wl.targetMode || wl.section;
                         return selectedModes.some(m => wlMode === m || wl.targetMode === m || wl.section === m);
                       })
-                    : watchlists;
+                    : groupedWatchlists;
 
                   return (
                     <div className="space-y-2.5">
@@ -2264,6 +2313,15 @@ export const ChannelsView: React.FC<ChannelsViewProps> = ({
                               const displaySet = new Set(displayWatchlists.map(w => w.id));
                               const remaining = (editingChannel.playlistIds || []).filter(id => !displaySet.has(id));
                               handleUpdateEditingChannelField('playlistIds', remaining);
+                              
+                              // Clear selected files for removed watchlists
+                              if (editingChannel.selectedFiles) {
+                                const newSelectedFiles = { ...editingChannel.selectedFiles };
+                                displayWatchlists.forEach(w => {
+                                  delete newSelectedFiles[w.id];
+                                });
+                                handleUpdateEditingChannelField('selectedFiles', newSelectedFiles);
+                              }
                             }}
                             className="px-2.5 py-1 rounded-xl bg-red-500/20 hover:bg-red-500 text-red-300 hover:text-white text-[11px] font-extrabold transition-all cursor-pointer border border-red-500/40"
                             title="إلغاء تحديد القوائم المعروضة"
@@ -2294,43 +2352,116 @@ export const ChannelsView: React.FC<ChannelsViewProps> = ({
                         ) : (
                           displayWatchlists.map((wl) => {
                             const isChecked = editingChannel.playlistIds?.includes(wl.id);
+                            const isExpanded = expandedWatchlists.includes(wl.id);
+                            
+                            // Calculate indeterminate state
+                            const wlSelectedFiles = editingChannel.selectedFiles?.[wl.id] || [];
+                            const totalFilesCount = (wl.files?.length || 0) + (wl.seasons?.flatMap(s => s.files || []).length || 0);
+                            const isIndeterminate = isChecked && wlSelectedFiles.length > 0 && wlSelectedFiles.length < totalFilesCount;
+                            const isFullySelected = isChecked && (wlSelectedFiles.length === 0 || wlSelectedFiles.length >= totalFilesCount);
 
                             return (
-                              <div
-                                key={wl.id}
-                                onClick={() => handleToggleWatchlistInChannel(wl.id)}
-                                className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-center justify-between ${
-                                  isChecked
-                                    ? 'bg-amber-400/15 border-amber-400/50 text-white shadow-sm'
-                                    : 'bg-white/5 border-white/10 hover:bg-white/10 text-white/70'
-                                }`}
-                              >
-                                <div className="flex items-center gap-3">
-                                  {wl.coverImage ? (
-                                    <img src={wl.coverImage} alt={wl.title} className="w-9 h-11 rounded-lg object-cover" />
-                                  ) : (
-                                    <div className="w-9 h-11 rounded-lg bg-white/10 flex items-center justify-center">
-                                      <Film className="w-5 h-5 text-white/40" />
+                              <div key={wl.id} className="border transition-all rounded-2xl bg-white/5 border-white/10 hover:border-white/20 overflow-hidden flex flex-col">
+                                <div
+                                  className={`p-3 cursor-pointer flex items-center justify-between transition-colors ${
+                                    isChecked
+                                      ? 'bg-amber-400/15'
+                                      : 'hover:bg-white/5'
+                                  }`}
+                                  onClick={() => handleToggleWatchlistAccordion(wl.id)}
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <button 
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleToggleWatchlistInChannel(wl.id);
+                                        // If unchecking, clear selected files for this watchlist
+                                        if (isChecked && editingChannel.selectedFiles?.[wl.id]) {
+                                          const newSelectedFiles = { ...editingChannel.selectedFiles };
+                                          delete newSelectedFiles[wl.id];
+                                          handleUpdateEditingChannelField('selectedFiles', newSelectedFiles);
+                                        }
+                                      }}
+                                      className={`w-6 h-6 rounded-lg flex items-center justify-center border transition-colors shrink-0 ${
+                                        isFullySelected ? 'bg-amber-400 border-amber-400 text-black' :
+                                        isIndeterminate ? 'bg-amber-400 border-amber-400 text-black' :
+                                        'border-white/30 text-transparent'
+                                      }`}
+                                    >
+                                      {isFullySelected && <Check className="w-4 h-4 stroke-[3]" />}
+                                      {isIndeterminate && <Minus className="w-4 h-4 stroke-[3]" />}
+                                    </button>
+
+                                    {wl.coverImage ? (
+                                      <img src={wl.coverImage} alt={wl.title} className="w-9 h-11 rounded-lg object-cover" />
+                                    ) : (
+                                      <div className="w-9 h-11 rounded-lg bg-white/10 flex items-center justify-center">
+                                        <Film className="w-5 h-5 text-white/40" />
+                                      </div>
+                                    )}
+                                    <div>
+                                      <div className="flex items-center gap-1.5">
+                                        <h4 className={`font-bold text-xs sm:text-sm ${isChecked ? 'text-white' : 'text-white/70'}`}>{wl.title}</h4>
+                                        {wl.targetMode && (
+                                          <span className="px-1.5 py-0.2 text-[9px] font-extrabold rounded bg-white/10 text-amber-300 border border-white/10">
+                                            {wl.targetMode}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <p className="text-[11px] text-white/50">{wl.section} • {totalFilesCount} مقطع</p>
                                     </div>
-                                  )}
-                                  <div>
-                                    <div className="flex items-center gap-1.5">
-                                      <h4 className="font-bold text-xs sm:text-sm text-white">{wl.title}</h4>
-                                      {wl.targetMode && (
-                                        <span className="px-1.5 py-0.2 text-[9px] font-extrabold rounded bg-white/10 text-amber-300 border border-white/10">
-                                          {wl.targetMode}
-                                        </span>
-                                      )}
-                                    </div>
-                                    <p className="text-[11px] text-white/50">{wl.section} • {wl.episodesCount} مقطع</p>
+                                  </div>
+
+                                  <div className="text-white/50 p-1">
+                                    {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                                   </div>
                                 </div>
-
-                                <div className={`w-5 h-5 rounded-lg flex items-center justify-center border transition-colors ${
-                                  isChecked ? 'bg-amber-400 border-amber-400 text-black' : 'border-white/30'
-                                }`}>
-                                  {isChecked && <Check className="w-3.5 h-3.5 stroke-[3]" />}
-                                </div>
+                                
+                                {isExpanded && (
+                                  <div className="border-t border-white/10 bg-black/40 p-3 max-h-60 overflow-y-auto space-y-2">
+                                    {wl.files && wl.files.map((file, idx) => (
+                                      <div key={file.absolutePath} className="flex items-center justify-between gap-3 p-2 rounded-xl hover:bg-white/5 transition-colors cursor-pointer"
+                                           onClick={() => handleToggleFileInWatchlist(wl.id, file.absolutePath)}>
+                                        <div className="flex items-center gap-3 overflow-hidden">
+                                          <div className={`w-5 h-5 rounded flex items-center justify-center border transition-colors shrink-0 ${
+                                            wlSelectedFiles.includes(file.absolutePath) || (isChecked && wlSelectedFiles.length === 0)
+                                              ? 'bg-amber-400 border-amber-400 text-black' 
+                                              : 'border-white/30 text-transparent'
+                                          }`}>
+                                            <Check className="w-3.5 h-3.5 stroke-[3]" />
+                                          </div>
+                                          <span className="text-xs text-white/80 truncate font-medium">{file.name || file.title || `ملف ${idx+1}`}</span>
+                                        </div>
+                                      </div>
+                                    ))}
+                                    
+                                    {wl.seasons && wl.seasons.map((season, sIdx) => (
+                                      <div key={season.name} className="space-y-1">
+                                        <h5 className="text-[10px] font-bold text-amber-300/70 px-2 pt-2">{season.name || `موسم ${sIdx+1}`}</h5>
+                                        {season.files && season.files.map((file, idx) => (
+                                          <div key={file.absolutePath} className="flex items-center justify-between gap-3 p-2 pl-4 rounded-xl hover:bg-white/5 transition-colors cursor-pointer"
+                                               onClick={() => handleToggleFileInWatchlist(wl.id, file.absolutePath)}>
+                                            <div className="flex items-center gap-3 overflow-hidden">
+                                              <div className={`w-5 h-5 rounded flex items-center justify-center border transition-colors shrink-0 ${
+                                                wlSelectedFiles.includes(file.absolutePath) || (isChecked && wlSelectedFiles.length === 0)
+                                                  ? 'bg-amber-400 border-amber-400 text-black' 
+                                                  : 'border-white/30 text-transparent'
+                                              }`}>
+                                                <Check className="w-3.5 h-3.5 stroke-[3]" />
+                                              </div>
+                                              <span className="text-xs text-white/80 truncate font-medium">{file.name || file.title || `حلقة ${idx+1}`}</span>
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    ))}
+                                    
+                                    {(!wl.files?.length && !wl.seasons?.length) && (
+                                      <div className="text-center py-4 text-xs text-white/40">هذه القائمة فارغة</div>
+                                    )}
+                                  </div>
+                                )}
                               </div>
                             );
                           })
@@ -2580,42 +2711,93 @@ export const ChannelsView: React.FC<ChannelsViewProps> = ({
                   </div>
                 </div>
 
-                {/* 4. DURATION FIELD (مدة العرض بالدقائق) */}
+                {/* 4. TRANSITION CONDITION */}
                 <div className="p-4 rounded-2xl bg-white/5 border border-white/10 space-y-3">
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="font-bold text-white/90 flex items-center gap-1.5">
-                      <Clock className="w-4 h-4 text-amber-400" />
-                      <span>مدة البث المباشر (بالدقائق):</span>
-                    </span>
-                    <span className="text-amber-300 font-mono font-bold">
-                      ينتهي الساعة {formatMinutesToTime(parseTimeToMinutes(slotTime) + (slotDurationMinutes || 60))}
-                    </span>
-                  </div>
-                  <input
-                    type="number"
-                    min={5}
-                    max={720}
-                    step={5}
-                    value={slotDurationMinutes}
-                    onChange={(e) => setSlotDurationMinutes(Math.max(5, Number(e.target.value) || 30))}
-                    className="w-full px-4 py-2.5 rounded-xl bg-zinc-800 border border-white/10 text-white focus:outline-none focus:border-amber-400 text-sm font-bold"
-                  />
-                  <div className="flex items-center gap-1.5 flex-wrap pt-1">
-                    {[30, 45, 60, 90, 120, 180].map(m => (
+                  <div className="space-y-1">
+                    <label className="block text-[11px] font-bold text-white/80">شرط الانتقال للموعد التالي:</label>
+                    <div className="grid grid-cols-2 gap-2">
                       <button
-                        key={m}
                         type="button"
-                        onClick={() => setSlotDurationMinutes(m)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                          slotDurationMinutes === m
-                            ? 'bg-amber-400 text-black font-extrabold shadow'
-                            : 'bg-white/10 text-white/70 hover:bg-white/20'
+                        onClick={() => setSlotTransitionType('episode')}
+                        className={`py-1.5 px-3 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 cursor-pointer ${
+                          slotTransitionType === 'episode'
+                            ? 'bg-amber-400 text-black border-amber-300 shadow-sm font-black'
+                            : 'bg-black/30 text-white/70 border-white/10 hover:bg-white/10'
                         }`}
                       >
-                        {m} دقيقة
+                        <Film className="w-3.5 h-3.5" />
+                        <span>📺 حسب عدد الحلقات</span>
                       </button>
-                    ))}
+                      <button
+                        type="button"
+                        onClick={() => setSlotTransitionType('time')}
+                        className={`py-1.5 px-3 rounded-xl text-xs font-bold transition-all border flex items-center justify-center gap-1.5 cursor-pointer ${
+                          slotTransitionType === 'time'
+                            ? 'bg-amber-400 text-black border-amber-300 shadow-sm font-black'
+                            : 'bg-black/30 text-white/70 border-white/10 hover:bg-white/10'
+                        }`}
+                      >
+                        <Clock className="w-3.5 h-3.5" />
+                        <span>⏱️ حسب الوقت الزمني</span>
+                      </button>
+                    </div>
                   </div>
+
+                  {slotTransitionType === 'time' ? (
+                    <div className="space-y-1 pt-1">
+                      <div className="flex justify-between items-center text-xs mb-2">
+                        <span className="font-bold text-amber-200">مدة البث (بالدقائق) قبل الانتقال:</span>
+                        <span className="text-amber-300 font-mono font-bold">
+                          ينتهي الساعة {formatMinutesToTime(parseTimeToMinutes(slotTime) + (slotDurationMinutes || 60))}
+                        </span>
+                      </div>
+                      <input
+                        type="number"
+                        min={5}
+                        max={720}
+                        step={5}
+                        value={slotDurationMinutes}
+                        onChange={(e) => setSlotDurationMinutes(Math.max(5, Number(e.target.value) || 30))}
+                        className="w-full px-4 py-2.5 rounded-xl bg-zinc-800 border border-white/10 text-white focus:outline-none focus:border-amber-400 text-sm font-bold mb-2"
+                      />
+                      <div className="flex flex-wrap gap-1.5">
+                        {[15, 30, 45, 60, 90, 120].map((mins) => (
+                          <button
+                            key={mins}
+                            type="button"
+                            onClick={() => setSlotDurationMinutes(mins)}
+                            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all border cursor-pointer ${
+                              slotDurationMinutes === mins
+                                ? 'bg-amber-400 text-black border-amber-300 font-extrabold'
+                                : 'bg-black/40 text-white/70 border-white/10 hover:bg-white/10'
+                            }`}
+                          >
+                            {mins} دقيقة
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-1 pt-1">
+                      <label className="block text-[11px] font-bold text-amber-200">عدد الحلقات قبل الانتقال:</label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {[1, 2, 3, 5, 10].map((eps) => (
+                          <button
+                            key={eps}
+                            type="button"
+                            onClick={() => setSlotTransitionEpisodes(eps)}
+                            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all border cursor-pointer ${
+                              slotTransitionEpisodes === eps
+                                ? 'bg-amber-400 text-black border-amber-300 font-extrabold'
+                                : 'bg-black/40 text-white/70 border-white/10 hover:bg-white/10'
+                            }`}
+                          >
+                            {eps} {eps === 1 ? 'حلقة واحدة' : eps === 2 ? 'حلقتان' : 'حلقات'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 

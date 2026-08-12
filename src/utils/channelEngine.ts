@@ -86,9 +86,50 @@ export function getChannelSolidBg(channel: { title?: string; category?: string; 
 }
 
 /**
+ * Groups single file watchlists into one virtual watchlist called "قائمة الملفات المنفردة"
+ */
+export function groupSingleFiles(watchlists: Watchlist[]): Watchlist[] {
+  const singleFiles = watchlists.filter(w => w.isSingleFile);
+  const regular = watchlists.filter(w => !w.isSingleFile);
+  
+  if (singleFiles.length === 0) return regular;
+  
+  const allSingleFiles = singleFiles.flatMap(w => {
+    if (w.files && w.files.length > 0) return w.files;
+    return [{
+      name: w.title,
+      title: w.title,
+      size: '0 MB',
+      absolutePath: w.files?.[0]?.absolutePath || w.folderPath,
+      coverImage: w.coverImage
+    }];
+  });
+
+  const combined: Watchlist = {
+    id: 'combined_single_files_playlist',
+    title: 'قائمة الملفات المنفردة 🎬',
+    section: 'عام',
+    targetMode: singleFiles[0]?.targetMode || 'family',
+    isSingleFile: false,
+    seriesCount: 1,
+    episodesCount: allSingleFiles.length,
+    files: allSingleFiles,
+    coverImage: singleFiles.find(w => w.coverImage)?.coverImage || '',
+    lastWatched: '',
+    progress: 0,
+    timeRemaining: '',
+    folderName: 'قائمة الملفات المنفردة',
+    folderPath: '/قائمة الملفات المنفردة'
+  };
+
+  return [...regular, combined];
+}
+
+/**
  * Automatically assigns local watchlists to relevant channels if playlistIds is empty
  */
-export function autoAssignWatchlistsToChannels(channels: Channel[], watchlists: Watchlist[]): Channel[] {
+export function autoAssignWatchlistsToChannels(channels: Channel[], rawWatchlists: Watchlist[]): Channel[] {
+  const watchlists = groupSingleFiles(rawWatchlists);
   if (!watchlists || watchlists.length === 0) return channels;
 
   return channels.map(channel => {
@@ -287,8 +328,9 @@ export interface NowPlayingInfo {
  */
 export function getChannelNowPlaying(
   channel: Channel,
-  watchlists: Watchlist[]
+  rawWatchlists: Watchlist[]
 ): NowPlayingInfo | null {
+  const watchlists = groupSingleFiles(rawWatchlists);
   const linkedLists = watchlists.filter(w => channel.playlistIds?.includes(w.id));
   if (linkedLists.length === 0) return null;
 
@@ -310,10 +352,15 @@ export function getChannelNowPlaying(
   const timeOffset = savedProg?.lastWatchedTime ?? currentWatchlist.lastWatchedTime ?? 0;
 
   // Flatten files from files + seasons
-  const rawFiles = [
+  let rawFiles = [
     ...(currentWatchlist.files || []),
     ...(currentWatchlist.seasons?.flatMap(s => s.files || []) || [])
   ];
+
+  if (channel.selectedFiles && channel.selectedFiles[currentWatchlist.id] && channel.selectedFiles[currentWatchlist.id].length > 0) {
+    const selectedPaths = new Set(channel.selectedFiles[currentWatchlist.id]);
+    rawFiles = rawFiles.filter(f => selectedPaths.has(f.absolutePath));
+  }
 
   if (rawFiles.length === 0) return null;
 

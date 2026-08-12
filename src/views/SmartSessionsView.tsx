@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Play, Settings2, Clock, Repeat, ListOrdered, Plus, X, Layers, CheckCircle2, Trash2, Pencil, RotateCcw, Search, Filter, BookOpen, Music, Film, Globe, Star, Radio, Sparkles, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, ArrowLeft, GripVertical, Copy, LayoutList, LayoutGrid, ArrowUp, ArrowDown } from 'lucide-react';
 import { Session, Watchlist, ScheduleSlot, Mode } from '../types';
 import { naturalCompare, sortSmartMediaFiles, normalizeArabicText } from '../utils/sorter';
+import { groupSingleFiles } from '../utils/channelEngine';
 import { ConfirmModal } from '../components/ConfirmModal';
 
 const CATEGORY_NAMES: Record<string, string> = {
@@ -31,7 +32,7 @@ interface SmartSessionsViewProps {
   onAddSession: (session: Session) => void;
   onUpdateSession?: (session: Session) => void;
   onDeleteSession: (id: string) => void;
-  watchlists: Watchlist[];
+  rawWatchlists: Watchlist[];
   onPlay: (file?: any, title?: string, watchlistTitle?: string, files?: any[], index?: number, sessionId?: string, watchlistId?: string) => void;
 }
 
@@ -40,15 +41,18 @@ export const SmartSessionsView: React.FC<SmartSessionsViewProps> = ({
   onAddSession,
   onUpdateSession,
   onDeleteSession,
-  watchlists = [], 
+  rawWatchlists = [], 
   onPlay 
 }) => {
+  const watchlists = React.useMemo(() => groupSingleFiles(rawWatchlists), [rawWatchlists]);
   const { showAlert } = useDialog();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [sessionTitle, setSessionTitle] = useState('');
   const [creationType, setCreationType] = useState<'schedule' | 'watchlists'>('schedule');
   const [selectedWatchlistIds, setSelectedWatchlistIds] = useState<string[]>([]);
+  const [selectedFiles, setSelectedFiles] = useState<Record<string, string[]>>({});
+  const [expandedWatchlists, setExpandedWatchlists] = useState<string[]>([]);
   const [slotViewMode, setSlotViewMode] = useState<'timeline' | 'cards'>('timeline');
   
   const [scheduleSlots, setScheduleSlots] = useState<ScheduleSlot[]>([
@@ -67,10 +71,46 @@ export const SmartSessionsView: React.FC<SmartSessionsViewProps> = ({
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('all');
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
 
-  const toggleWatchlistSelection = (id: string) => {
-    setSelectedWatchlistIds(prev => 
-      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+  const toggleWatchlistSelection = (id: string, forceState?: boolean) => {
+    if (forceState !== undefined) {
+      if (forceState && !selectedWatchlistIds.includes(id)) {
+        setSelectedWatchlistIds(prev => [...prev, id]);
+      } else if (!forceState && selectedWatchlistIds.includes(id)) {
+        setSelectedWatchlistIds(prev => prev.filter(wId => wId !== id));
+      }
+      return;
+    }
+    
+    setSelectedWatchlistIds(prev =>
+      prev.includes(id) ? prev.filter(wId => wId !== id) : [...prev, id]
     );
+  };
+
+  const handleToggleWatchlistAccordion = (id: string) => {
+    setExpandedWatchlists(prev => 
+      prev.includes(id) ? prev.filter(wId => wId !== id) : [...prev, id]
+    );
+  };
+
+  const handleToggleFileInWatchlist = (watchlistId: string, filePath: string) => {
+    const watchlistSelected = selectedFiles[watchlistId] || [];
+    const isFileSelected = watchlistSelected.includes(filePath);
+    
+    let newWatchlistSelected: string[];
+    if (isFileSelected) {
+      newWatchlistSelected = watchlistSelected.filter(p => p !== filePath);
+    } else {
+      newWatchlistSelected = [...watchlistSelected, filePath];
+    }
+    
+    setSelectedFiles(prev => ({
+      ...prev,
+      [watchlistId]: newWatchlistSelected
+    }));
+    
+    if (!isFileSelected && newWatchlistSelected.length > 0) {
+      toggleWatchlistSelection(watchlistId, true);
+    }
   };
 
   const handleOpenCreateModal = () => {
@@ -78,6 +118,8 @@ export const SmartSessionsView: React.FC<SmartSessionsViewProps> = ({
     setSessionTitle('');
     setCreationType('schedule');
     setSelectedWatchlistIds([]);
+    setSelectedFiles({});
+    setExpandedWatchlists([]);
     setScheduleSlots([
       { id: Date.now().toString() + '-1', mode: 'kids', watchlistId: watchlists.find(w => w.section === 'kids')?.id || '', watchlistTitle: watchlists.find(w => w.section === 'kids')?.title || '', durationMinutes: 30 },
       { id: Date.now().toString() + '-2', mode: 'quran', watchlistId: watchlists.find(w => w.section === 'quran')?.id || '', watchlistTitle: watchlists.find(w => w.section === 'quran')?.title || '', durationMinutes: 15 },
@@ -106,6 +148,8 @@ export const SmartSessionsView: React.FC<SmartSessionsViewProps> = ({
     setBreakBetweenItems(session.breakBetweenItems || 0);
     setTransitionType(session.transitionType || 'episode');
     setTransitionMinutes(session.transitionMinutes || 30);
+    setSelectedFiles(session.selectedFiles || {});
+    setExpandedWatchlists([]);
     setSearchQuery('');
     setSelectedCategoryFilter('all');
     setShowCreateModal(true);
@@ -127,7 +171,6 @@ export const SmartSessionsView: React.FC<SmartSessionsViewProps> = ({
       if (s.id !== id) return s;
       const updated = { ...s, ...updates };
       if (updates.mode && updates.mode !== s.mode) {
-        // Mode changed -> Reset watchlist to force user to pick from new mode
         updated.watchlistId = '';
         updated.watchlistTitle = '';
       } else if (updates.watchlistId) {
@@ -260,6 +303,7 @@ export const SmartSessionsView: React.FC<SmartSessionsViewProps> = ({
         breakBetweenItems,
         breakBetweenLoops: 0,
         selectedWatchlistIds: activeWatchlistIds,
+        selectedFiles: Object.keys(selectedFiles).length > 0 ? selectedFiles : undefined,
         strategy: strategy === 'schedule' ? 'alternate' : strategy,
         lastWatchedIndex: 0,
         transitionType,
@@ -276,19 +320,18 @@ export const SmartSessionsView: React.FC<SmartSessionsViewProps> = ({
     setEditingSessionId(null);
     setSessionTitle('');
     setSelectedWatchlistIds([]);
+    setSelectedFiles({});
+    setExpandedWatchlists([]);
     setShowCreateModal(false);
   };
 
-  // Launching a smart session with instant switching between schedule slots & watchlists
   const handleStartSession = async (session: Session, restartFromBeginning: boolean = false) => {
     let mergedQueue: any[] = [];
 
-    // Reuse queue if resuming session
     if (!restartFromBeginning && session.queue && session.queue.length > 0) {
       mergedQueue = [...session.queue];
     } else {
       if (session.scheduleSlots && session.scheduleSlots.length > 0) {
-        // Build Queue based on Schedule Slots
         session.scheduleSlots.forEach((slot, slotIdx) => {
           let wl = watchlists.find(w => w.id === slot.watchlistId);
           if (!wl) {
@@ -310,7 +353,6 @@ export const SmartSessionsView: React.FC<SmartSessionsViewProps> = ({
               }));
             }
           } else {
-            // Fallback placeholder items for this slot mode
             const modeLabel = CATEGORY_NAMES[slot.mode] || slot.mode;
             rawFiles = [
               { name: `مقطع وضع ${modeLabel} - 1` },
@@ -336,7 +378,6 @@ export const SmartSessionsView: React.FC<SmartSessionsViewProps> = ({
           });
         });
       } else {
-        // Collect watchlists for this session
         const targetWatchlists = session.selectedWatchlistIds && session.selectedWatchlistIds.length > 0
           ? watchlists.filter(w => session.selectedWatchlistIds!.includes(w.id))
           : watchlists;
@@ -415,7 +456,6 @@ export const SmartSessionsView: React.FC<SmartSessionsViewProps> = ({
       initialTime = session.lastWatchedTime || 0;
     }
 
-    // Save updated queue and progress
     const updatedSession = {
       ...session,
       queue: mergedQueue,
@@ -426,7 +466,6 @@ export const SmartSessionsView: React.FC<SmartSessionsViewProps> = ({
       onUpdateSession(updatedSession);
     }
 
-    // Launch player immediately
     onPlay(
       mergedQueue[startIndex].file,
       mergedQueue[startIndex].title,
@@ -497,7 +536,6 @@ export const SmartSessionsView: React.FC<SmartSessionsViewProps> = ({
                 }`} />
                 
                 <div className="relative z-10">
-                  {/* Top Header: Session Title & Options */}
                   <div className="flex items-center justify-between gap-4 border-b border-white/10 pb-4 mb-4">
                     <div className="flex items-center gap-2.5 min-w-0">
                       <h2 className="text-xl sm:text-2xl font-extrabold text-white shadow-sm leading-snug break-words">
@@ -524,9 +562,7 @@ export const SmartSessionsView: React.FC<SmartSessionsViewProps> = ({
                     </div>
                   </div>
 
-                  {/* Actions & Status Row */}
                   <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-6">
-                    {/* Badges */}
                     <div className="flex items-center gap-2 flex-wrap">
                       {isScheduleSession ? (
                         <span className="text-xs text-amber-200 bg-gradient-to-r from-amber-500/30 via-orange-500/30 to-amber-500/30 border border-amber-400/50 px-3 py-1.5 rounded-full inline-flex items-center gap-1 font-bold shadow-[0_0_12px_rgba(245,158,11,0.3)]">
@@ -544,7 +580,6 @@ export const SmartSessionsView: React.FC<SmartSessionsViewProps> = ({
                       )}
                     </div>
 
-                    {/* Play / Resume Controls */}
                     <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto justify-end">
                       {hasProgress && (
                         <button 
@@ -634,7 +669,6 @@ export const SmartSessionsView: React.FC<SmartSessionsViewProps> = ({
         </div>
       )}
 
-      {/* Modal for Creating / Editing a Smart Session */}
       <AnimatePresence>
         {showCreateModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/80 backdrop-blur-md">
@@ -662,7 +696,6 @@ export const SmartSessionsView: React.FC<SmartSessionsViewProps> = ({
               </div>
 
               <div className="space-y-6">
-                {/* Session Title Input */}
                 <div>
                   <label className="block text-sm font-medium text-white/80 mb-2">اسم الجلسة الذكية</label>
                   <input 
@@ -674,7 +707,6 @@ export const SmartSessionsView: React.FC<SmartSessionsViewProps> = ({
                   />
                 </div>
 
-                {/* Session Type Switcher */}
                 <div className="flex bg-black/40 p-1.5 rounded-2xl border border-white/10">
                   <button
                     type="button"
@@ -699,9 +731,7 @@ export const SmartSessionsView: React.FC<SmartSessionsViewProps> = ({
                 </div>
 
                 {creationType === 'schedule' ? (
-                  /* Mode Schedule Slots Editor - Innovative Redesign */
                   <div className="space-y-5">
-                    {/* Header & Controls Bar */}
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-zinc-900/90 p-4 rounded-2xl border border-white/10 shadow-lg">
                       <div>
                         <h3 className="text-sm sm:text-base font-extrabold text-white flex items-center gap-2">
@@ -716,7 +746,6 @@ export const SmartSessionsView: React.FC<SmartSessionsViewProps> = ({
                       </div>
 
                       <div className="flex items-center gap-2 shrink-0 flex-wrap">
-                        {/* Toggle View Mode */}
                         <div className="flex items-center bg-black/60 p-1 rounded-xl border border-white/10 text-xs">
                           <button
                             type="button"
@@ -742,7 +771,6 @@ export const SmartSessionsView: React.FC<SmartSessionsViewProps> = ({
                           </button>
                         </div>
 
-                        {/* Add New Slot */}
                         <button
                           type="button"
                           onClick={addScheduleSlot}
@@ -754,7 +782,6 @@ export const SmartSessionsView: React.FC<SmartSessionsViewProps> = ({
                       </div>
                     </div>
 
-                    {/* Live Sequence Chain Ribbon (شريط مسار التسلسل التفاعلي) */}
                     <div className="bg-black/60 p-3 rounded-2xl border border-amber-500/30 overflow-x-auto no-scrollbar shadow-inner">
                       <div className="flex items-center gap-2 text-xs min-w-max">
                         <span className="text-[11px] font-bold text-amber-400/90 bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-400/20 shrink-0">
@@ -792,7 +819,6 @@ export const SmartSessionsView: React.FC<SmartSessionsViewProps> = ({
                       </div>
                     </div>
 
-                    {/* Quick Presets Section */}
                     <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
                       <span className="text-xs text-white/50 font-bold shrink-0">نماذج جاهزة:</span>
                       <button
@@ -818,9 +844,7 @@ export const SmartSessionsView: React.FC<SmartSessionsViewProps> = ({
                       </button>
                     </div>
 
-                    {/* Main Slots Editor Content */}
                     {slotViewMode === 'timeline' ? (
-                      /* VERTICAL TIMELINE VIEW (عرض التسلسل الرأسي المباشر) */
                       <div className="space-y-3 relative before:absolute before:right-6 before:top-4 before:bottom-4 before:w-0.5 before:bg-gradient-to-b before:from-amber-400 before:via-indigo-500 before:to-amber-400/20 before:z-0">
                         <AnimatePresence>
                           {scheduleSlots.map((slot, index) => {
@@ -837,12 +861,10 @@ export const SmartSessionsView: React.FC<SmartSessionsViewProps> = ({
                                 transition={{ duration: 0.2 }}
                                 className="relative z-10 pr-12"
                               >
-                                {/* Timeline Node Badge */}
                                 <div className="absolute right-3 top-5 w-7 h-7 rounded-full bg-amber-400 text-black font-extrabold text-xs flex items-center justify-center shadow-[0_0_15px_rgba(245,158,11,0.6)] border-2 border-black z-20">
                                   {index + 1}
                                 </div>
 
-                                {/* Slot Card */}
                                 <div className="glass rounded-2xl border border-amber-400/30 p-4 bg-zinc-950/80 shadow-xl space-y-3">
                                   <div className="flex items-center justify-between gap-2 border-b border-white/10 pb-2.5">
                                     <div className="flex items-center gap-2">
@@ -856,7 +878,6 @@ export const SmartSessionsView: React.FC<SmartSessionsViewProps> = ({
                                       )}
                                     </div>
 
-                                    {/* Reorder Up/Down, Duplicate & Delete Actions */}
                                     <div className="flex items-center gap-1">
                                       <button
                                         type="button"
@@ -901,7 +922,6 @@ export const SmartSessionsView: React.FC<SmartSessionsViewProps> = ({
                                   </div>
 
                                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                    {/* Mode Selector */}
                                     <div>
                                       <label className="block text-xs font-bold text-amber-300/90 mb-1">اختر الوضع:</label>
                                       <select
@@ -919,7 +939,6 @@ export const SmartSessionsView: React.FC<SmartSessionsViewProps> = ({
                                       </select>
                                     </div>
 
-                                    {/* Watchlist Selector */}
                                     <div>
                                       <label className="block text-xs font-bold text-white/80 mb-1">قائمة التشغيل المحددة:</label>
                                       <select
@@ -949,7 +968,6 @@ export const SmartSessionsView: React.FC<SmartSessionsViewProps> = ({
                                     </div>
                                   </div>
 
-                                  {/* Transition Type Config */}
                                   <div className="p-3 bg-black/50 rounded-xl border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                                     <div className="flex items-center gap-2">
                                       <span className="text-xs font-bold text-white/80">الانتقال للوضع التالي:</span>
@@ -979,7 +997,6 @@ export const SmartSessionsView: React.FC<SmartSessionsViewProps> = ({
                                       </div>
                                     </div>
 
-                                    {/* Transition Values */}
                                     <div>
                                       {(!slot.transitionType || slot.transitionType === 'episode') ? (
                                         <div className="flex items-center gap-2">
@@ -1016,7 +1033,6 @@ export const SmartSessionsView: React.FC<SmartSessionsViewProps> = ({
                         </AnimatePresence>
                       </div>
                     ) : (
-                      /* HORIZONTAL CARDS VIEW (عرض البطاقات الأفقية المتتابعة) */
                       <div className="flex items-stretch gap-4 overflow-x-auto pb-4 pt-2 snap-x no-scrollbar touch-pan-x px-1">
                         {scheduleSlots.map((slot, index) => {
                           return (
@@ -1186,7 +1202,6 @@ export const SmartSessionsView: React.FC<SmartSessionsViewProps> = ({
                     )}
                   </div>
                 ) : (
-                  /* Classic Watchlist List Selection */
                   <div>
                     <div className="flex items-center justify-between mb-3">
                       <label className="block text-sm font-medium text-white/80">
@@ -1203,7 +1218,6 @@ export const SmartSessionsView: React.FC<SmartSessionsViewProps> = ({
                       </div>
                     ) : (
                       <div className="space-y-3">
-                        {/* Search & Category Filter Header */}
                         <div className="space-y-2">
                           <div className="relative">
                             <Search className="w-4 h-4 text-white/40 absolute right-3.5 top-3 pointer-events-none" />
@@ -1245,7 +1259,6 @@ export const SmartSessionsView: React.FC<SmartSessionsViewProps> = ({
                           </div>
                         </div>
 
-                        {/* Filtered Watchlists Grid */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-52 overflow-y-auto no-scrollbar p-1">
                           {watchlists
                             .filter(w => {
@@ -1255,27 +1268,99 @@ export const SmartSessionsView: React.FC<SmartSessionsViewProps> = ({
                             })
                             .map((w) => {
                               const isSelected = selectedWatchlistIds.includes(w.id);
+                              const isExpanded = expandedWatchlists.includes(w.id);
+                              
+                              const wlSelectedFiles = selectedFiles[w.id] || [];
+                              const totalFilesCount = (w.files?.length || 0) + (w.seasons?.flatMap(s => s.files || []).length || 0);
+                              const isIndeterminate = isSelected && wlSelectedFiles.length > 0 && wlSelectedFiles.length < totalFilesCount;
+                              const isFullySelected = isSelected && (wlSelectedFiles.length === 0 || wlSelectedFiles.length >= totalFilesCount);
+
                               return (
-                                <div 
-                                  key={w.id}
-                                  onClick={() => toggleWatchlistSelection(w.id)}
-                                  className={`p-3.5 rounded-xl border cursor-pointer transition-all flex items-center justify-between ${
-                                    isSelected ? 'bg-white/20 border-white shadow-lg font-bold' : 'glass border-white/10 hover:bg-white/10'
-                                  }`}
-                                >
-                                  <div className="flex items-center gap-2.5 min-w-0">
-                                    <Layers className={`w-4 h-4 shrink-0 ${isSelected ? 'text-green-400' : 'text-white/50'}`} />
-                                    <div className="min-w-0">
-                                      <span className="text-sm line-clamp-1 block leading-tight">{w.title}</span>
-                                      <span className="text-[10px] text-white/50 block mt-0.5 font-normal">
-                                        {CATEGORY_NAMES[w.section] || w.section || 'عام'} • {w.files?.length || w.episodesCount || 0} مقطع
-                                      </span>
+                                <div key={w.id} className="border transition-all rounded-xl overflow-hidden flex flex-col glass border-white/10 hover:border-white/20">
+                                  <div 
+                                    onClick={() => handleToggleWatchlistAccordion(w.id)}
+                                    className={`p-3.5 cursor-pointer transition-all flex items-center justify-between ${
+                                      isSelected ? 'bg-white/10' : 'hover:bg-white/5'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-2.5 min-w-0">
+                                      <button 
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          toggleWatchlistSelection(w.id);
+                                          if (isSelected && selectedFiles[w.id]) {
+                                            const newSelectedFiles = { ...selectedFiles };
+                                            delete newSelectedFiles[w.id];
+                                            setSelectedFiles(newSelectedFiles);
+                                          }
+                                        }}
+                                        className={`w-6 h-6 rounded flex items-center justify-center border transition-colors shrink-0 ${
+                                          isFullySelected ? 'bg-green-400 border-green-400 text-black' :
+                                          isIndeterminate ? 'bg-green-400 border-green-400 text-black' :
+                                          'border-white/30 text-transparent hover:border-white/50'
+                                        }`}
+                                      >
+                                        {isFullySelected && <CheckCircle2 className="w-4 h-4 stroke-[3]" />}
+                                        {isIndeterminate && <Minus className="w-4 h-4 stroke-[3]" />}
+                                      </button>
+                                      
+                                      <Layers className={`w-4 h-4 shrink-0 ${isSelected ? 'text-green-400' : 'text-white/50'}`} />
+                                      <div className="min-w-0">
+                                        <span className={`text-sm line-clamp-1 block leading-tight ${isSelected ? 'font-bold text-white' : 'text-white/80'}`}>{w.title}</span>
+                                        <span className="text-[10px] text-white/50 block mt-0.5 font-normal">
+                                          {CATEGORY_NAMES[w.section] || w.section || 'عام'} • {totalFilesCount} مقطع
+                                        </span>
+                                      </div>
+                                    </div>
+                                    <div className="text-white/50 p-1">
+                                      {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                                     </div>
                                   </div>
-                                  {isSelected ? (
-                                    <CheckCircle2 className="w-5 h-5 text-green-400 shrink-0 mr-2" />
-                                  ) : (
-                                    <div className="w-5 h-5 rounded-full border border-white/20 shrink-0 mr-2" />
+                                  
+                                  {isExpanded && (
+                                    <div className="border-t border-white/10 bg-black/40 p-3 max-h-60 overflow-y-auto space-y-2">
+                                      {w.files && w.files.map((file, idx) => (
+                                        <div key={file.absolutePath} className="flex items-center justify-between gap-3 p-2 rounded-xl hover:bg-white/5 transition-colors cursor-pointer"
+                                             onClick={() => handleToggleFileInWatchlist(w.id, file.absolutePath)}>
+                                          <div className="flex items-center gap-3 overflow-hidden">
+                                            <div className={`w-5 h-5 rounded flex items-center justify-center border transition-colors shrink-0 ${
+                                              wlSelectedFiles.includes(file.absolutePath) || (isSelected && wlSelectedFiles.length === 0)
+                                                ? 'bg-green-400 border-green-400 text-black' 
+                                                : 'border-white/30 text-transparent'
+                                            }`}>
+                                              <CheckCircle2 className="w-3.5 h-3.5 stroke-[3]" />
+                                            </div>
+                                            <span className="text-xs text-white/80 truncate font-medium">{file.name || file.title || `ملف ${idx+1}`}</span>
+                                          </div>
+                                        </div>
+                                      ))}
+                                      
+                                      {w.seasons && w.seasons.map((season, sIdx) => (
+                                        <div key={season.name} className="space-y-1">
+                                          <h5 className="text-[10px] font-bold text-green-400/70 px-2 pt-2">{season.name || `موسم ${sIdx+1}`}</h5>
+                                          {season.files && season.files.map((file, idx) => (
+                                            <div key={file.absolutePath} className="flex items-center justify-between gap-3 p-2 pl-4 rounded-xl hover:bg-white/5 transition-colors cursor-pointer"
+                                                 onClick={() => handleToggleFileInWatchlist(w.id, file.absolutePath)}>
+                                              <div className="flex items-center gap-3 overflow-hidden">
+                                                <div className={`w-5 h-5 rounded flex items-center justify-center border transition-colors shrink-0 ${
+                                                  wlSelectedFiles.includes(file.absolutePath) || (isSelected && wlSelectedFiles.length === 0)
+                                                    ? 'bg-green-400 border-green-400 text-black' 
+                                                    : 'border-white/30 text-transparent'
+                                                }`}>
+                                                  <CheckCircle2 className="w-3.5 h-3.5 stroke-[3]" />
+                                                </div>
+                                                <span className="text-xs text-white/80 truncate font-medium">{file.name || file.title || `حلقة ${idx+1}`}</span>
+                                              </div>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      ))}
+                                      
+                                      {(!w.files?.length && !w.seasons?.length) && (
+                                        <div className="text-center py-4 text-xs text-white/40">هذه القائمة فارغة</div>
+                                      )}
+                                    </div>
                                   )}
                                 </div>
                               );

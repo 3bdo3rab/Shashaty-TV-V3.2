@@ -498,7 +498,15 @@ const [isPlaying, setIsPlaying] = useState(true);
   const [activeEqPreset, setActiveEqPreset] = useState<string>('boost');
 
   // Moved from bottom to prevent TDZ
-  const [volume, setVolume] = useState(1);
+  const [volume, setVolume] = useState(() => {
+    const savedVol = localStorage.getItem('shashaty_player_volume');
+    return savedVol !== null ? parseFloat(savedVol) : 1;
+  });
+  
+  useEffect(() => {
+    localStorage.setItem('shashaty_player_volume', volume.toString());
+  }, [volume]);
+  
   const [isMuted, setIsMuted] = useState(false);
   const [showVolumeControl, setShowVolumeControl] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -1692,8 +1700,11 @@ const [isPlaying, setIsPlaying] = useState(true);
 
       // Smart resume from saved initialTime if provided, but ONLY for the initial episode
       if (!initialSeekDone) {
-        if (currentIndex === (initialIndex || 0) && initialTime && initialTime > 0 && initialTime < videoRef.current.duration) {
-          videoRef.current.currentTime = initialTime;
+        if (currentIndex === (initialIndex || 0) && initialTime && initialTime > 0) {
+          const dur = videoRef.current.duration;
+          if (isNaN(dur) || dur === Infinity || initialTime < dur) {
+            videoRef.current.currentTime = initialTime;
+          }
         }
         setInitialSeekDone(true);
       } else {
@@ -2007,6 +2018,13 @@ const [isPlaying, setIsPlaying] = useState(true);
           return;
         } else {
           // Reached end of schedule broadcast slots
+          if (currentChannelId && onPlayChannel && channels) {
+            const chan = channels.find(c => c.id === currentChannelId);
+            if (chan) {
+              onPlayChannel(chan);
+              return;
+            }
+          }
           prepareAndShowRecommendations();
           return;
         }
@@ -2016,6 +2034,13 @@ const [isPlaying, setIsPlaying] = useState(true);
     if (files && currentIndex < files.length - 1) {
       triggerNextEpisodeBumper(currentIndex + 1);
     } else {
+      if (currentChannelId && onPlayChannel && channels) {
+        const chan = channels.find(c => c.id === currentChannelId);
+        if (chan) {
+          onPlayChannel(chan);
+          return;
+        }
+      }
       prepareAndShowRecommendations();
     }
   };
@@ -3204,14 +3229,6 @@ const [isPlaying, setIsPlaying] = useState(true);
                       )}
                     </AnimatePresence>
                   </div>
-
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); rotateVideo(); }}
-                    className="text-white/70 hover:text-white transition-colors p-2" 
-                    title="استدارة الشاشة"
-                  >
-                    <RotateCw className="w-5 h-5 sm:w-6 sm:h-6" />
-                  </button>
                 </div>
 
                 {/* Center: Playback Controls */}

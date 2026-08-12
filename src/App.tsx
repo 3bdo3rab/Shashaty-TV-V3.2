@@ -431,8 +431,15 @@ export default function App() {
   };
 
   const handlePlayChannelFromPlayer = (channel: Channel) => {
-    const np = autoAssignWatchlistsToChannels(channels, watchlists);
-    const resolvedChan = np.find(c => c.id === channel.id) || channel;
+    // Advance the channel rotation series index BEFORE fetching now playing
+    const nextRot = ((channel.currentSeriesIndex || 0) + 1) % Math.max(1, channel.playlistIds?.length || 1);
+    const updatedChannel = { ...channel, currentSeriesIndex: nextRot };
+    
+    // Update store
+    setChannels(prev => prev.map(c => c.id === channel.id ? updatedChannel : c));
+
+    const np = autoAssignWatchlistsToChannels(channels.map(c => c.id === channel.id ? updatedChannel : c), watchlists);
+    const resolvedChan = np.find(c => c.id === channel.id) || updatedChannel;
     const nowPlaying = getChannelNowPlaying(resolvedChan, watchlists);
     if (!nowPlaying) return;
     handlePlay(
@@ -461,7 +468,21 @@ export default function App() {
         progress: Math.min(100, Math.round(((newIndex + 1) / Math.max(1, w.episodesCount || w.files?.length || 1)) * 100)) 
       } : w));
     }
-  }, [activeSessionId, activeWatchlistId]);
+    if (activeChannelId && activeWatchlistId) {
+      setChannels(prev => prev.map(c => {
+        if (c.id === activeChannelId) {
+          return {
+            ...c,
+            watchlistProgress: {
+              ...(c.watchlistProgress || {}),
+              [activeWatchlistId]: { lastWatchedIndex: newIndex, lastWatchedTime: currentTime }
+            }
+          };
+        }
+        return c;
+      }));
+    }
+  }, [activeSessionId, activeWatchlistId, activeChannelId]);
 
   const isBroadcastingView = currentView === 'channels' || currentView === 'schedule';
 
@@ -615,7 +636,7 @@ export default function App() {
                   <ChannelsView
                     initialTab="channels"
                     channels={channels}
-                    watchlists={watchlists}
+                    rawWatchlists={watchlists}
                     schedules={schedules}
                     customModes={customModes}
                     customCategories={customCategories}
@@ -628,7 +649,7 @@ export default function App() {
                   <ChannelsView
                     initialTab="schedule"
                     channels={channels}
-                    watchlists={watchlists}
+                    rawWatchlists={watchlists}
                     schedules={schedules}
                     customModes={customModes}
                     customCategories={customCategories}
@@ -685,7 +706,7 @@ export default function App() {
                     onAddSession={handleAddSession}
                     onUpdateSession={handleUpdateSession}
                     onDeleteSession={handleDeleteSession}
-                    watchlists={watchlists}
+                    rawWatchlists={watchlists}
                     onPlay={handlePlay} 
                   />
                 )}
