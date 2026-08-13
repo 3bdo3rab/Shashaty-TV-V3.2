@@ -528,7 +528,15 @@ const [isPlaying, setIsPlaying] = useState(true);
   const [contrast, setContrast] = useState<number>(100);
   const [saturation, setSaturation] = useState<number>(100);
   const [hue, setHue] = useState<number>(0);
-  const [aspectRatio, setAspectRatio] = useState<'auto' | '4:3' | '5:4' | '16:9' | 'cover' | 'fill'>('auto');
+  const [aspectRatio, setAspectRatio] = useState<'auto' | '4:3' | '5:4' | '16:9' | 'cover' | 'fill'>(() => {
+    const saved = localStorage.getItem('shashaty_aspect_ratio');
+    return (saved as any) || 'auto';
+  });
+
+  // Persist aspectRatio
+  useEffect(() => {
+    localStorage.setItem('shashaty_aspect_ratio', aspectRatio);
+  }, [aspectRatio]);
 
   // Broadcast TV State to Remote App
   useEffect(() => {
@@ -776,31 +784,6 @@ const [isPlaying, setIsPlaying] = useState(true);
   });
   const [currentTitle, setCurrentTitle] = useState(title);
   const [initialSeekDone, setInitialSeekDone] = useState(false);
-  
-  // Fullscreen cursor auto-hide logic
-  const [isCursorHidden, setIsCursorHidden] = useState(false);
-  const cursorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  useEffect(() => {
-    const handleMouseMove = () => {
-      setIsCursorHidden(false);
-      if (cursorTimeoutRef.current) clearTimeout(cursorTimeoutRef.current);
-      if (isFullscreen) {
-        cursorTimeoutRef.current = setTimeout(() => {
-          setIsCursorHidden(true);
-        }, 3000);
-      }
-    };
-    window.addEventListener('mousemove', handleMouseMove);
-    // Trigger once if already in fullscreen
-    if (isFullscreen) handleMouseMove();
-    else setIsCursorHidden(false);
-
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      if (cursorTimeoutRef.current) clearTimeout(cursorTimeoutRef.current);
-    };
-  }, [isFullscreen]);
 
   // Sync internal state when incoming props change (e.g. channel switch, episode change)
   useEffect(() => {
@@ -1917,7 +1900,7 @@ const [isPlaying, setIsPlaying] = useState(true);
   useEffect(() => {
     let timeout: NodeJS.Timeout;
     if (isPlaying && showControls && !showPlaylistDrawer && !showSettings && !showChannelsDrawer && !showScheduleEndOverlay) {
-      timeout = setTimeout(() => setShowControls(false), 3500);
+      timeout = setTimeout(() => setShowControls(false), 5000);
     }
     return () => clearTimeout(timeout);
   }, [isPlaying, showControls, showPlaylistDrawer, showSettings, showChannelsDrawer, showScheduleEndOverlay]);
@@ -2202,8 +2185,8 @@ const [isPlaying, setIsPlaying] = useState(true);
       transition={{ duration: 0.15 }}
       className={
         isFloatingMode
-          ? `fixed bottom-6 left-6 z-[999] w-80 sm:w-96 rounded-3xl bg-zinc-950/95 border-2 border-amber-400/90 shadow-[0_25px_60px_rgba(0,0,0,0.95)] backdrop-blur-2xl overflow-hidden flex flex-col text-right dir-rtl cursor-grab active:cursor-grabbing ${isCursorHidden ? 'cursor-none' : ''}`
-          : `fixed inset-0 z-50 bg-black flex flex-col overflow-hidden text-right dir-rtl ${isCursorHidden ? 'cursor-none' : ''}`
+          ? `fixed bottom-6 left-6 z-[999] w-80 sm:w-96 rounded-3xl bg-zinc-950/95 border-2 border-amber-400/90 shadow-[0_25px_60px_rgba(0,0,0,0.95)] backdrop-blur-2xl overflow-hidden flex flex-col text-right dir-rtl cursor-grab active:cursor-grabbing ${!showControls ? 'cursor-none' : ''}`
+          : `fixed inset-0 z-50 bg-black flex flex-col overflow-hidden text-right dir-rtl ${!showControls ? 'cursor-none' : ''}`
       }
       style={
         !isFloatingMode && rotation % 180 !== 0
