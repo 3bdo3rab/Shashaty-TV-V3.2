@@ -149,7 +149,7 @@ export default function App() {
       setWatchlists(lists);
 
       // Auto-Resume
-      const isAutoResumeEnabled = localStorage.getItem('app_resume_playback') !== 'false';
+      const isAutoResumeEnabled = localStorage.getItem('app_resume_playback') === 'true';
       const lastState = await store.getLastPlaybackState();
       if (isAutoResumeEnabled && lastState && lastState.watchlistId && lastState.fileIndex !== undefined) {
         const wl = lists.find((w: any) => w.id === lastState.watchlistId);
@@ -311,12 +311,11 @@ export default function App() {
 
       itemsToAdd.forEach(item => {
         const existingIdx = updatedPrev.findIndex(existing => {
-          if (existing.folderPath && item.folderPath && existing.folderPath.trim().toLowerCase() === item.folderPath.trim().toLowerCase()) {
-            return true;
-          }
-          if (existing.folderName && item.folderName && existing.title && item.title && 
-              existing.folderName.trim().toLowerCase() === item.folderName.trim().toLowerCase() && 
-              existing.title.trim().toLowerCase() === item.title.trim().toLowerCase()) {
+          if (existing.id === item.id) return true;
+          if (existing.folderPath && item.folderPath && 
+              existing.folderPath.trim().toLowerCase() === item.folderPath.trim().toLowerCase() && 
+              existing.folderName?.trim().toLowerCase() === item.folderName?.trim().toLowerCase() && 
+              existing.title?.trim().toLowerCase() === item.title?.trim().toLowerCase()) {
             return true;
           }
           return false;

@@ -91,29 +91,34 @@ export async function processMediaDirectory(
     const watchlists: Watchlist[] = [];
     
     // 1. Process root files
-    rootFiles.forEach(vf => {
-      const existing = existingWatchlists.find(w => w.folderPath === dirPath && w.title === vf.title);
+    if (rootFiles.length > 0) {
+      const existing = existingWatchlists.find(w => w.folderPath === dirPath && (w.title === rootGroupName || (w.files && w.files.some(f => rootFiles.some(rf => rf.absolutePath === (f as any).absolutePath)))));
+      const sortedRootFiles = sortSmartMediaFiles(rootFiles);
       if (existing) {
-        watchlists.push({ ...existing, files: [vf], isSingleFile: true });
+        // Merge root files
+        const fileMap = new Map();
+        (existing.files || []).forEach(f => fileMap.set((f as any).absolutePath || f.name, f));
+        sortedRootFiles.forEach(f => fileMap.set((f as any).absolutePath || f.name, f));
+        watchlists.push({ ...existing, files: sortSmartMediaFiles(Array.from(fileMap.values())), isSingleFile: false });
       } else {
         watchlists.push({
           id: crypto.randomUUID(),
-          title: vf.title,
-          section: 'مقاطع مفردة',
+          title: rootGroupName,
+          section: rootGroupName,
           coverImage: '',
           seriesCount: 1,
-          episodesCount: 1,
+          episodesCount: rootFiles.length,
           lastWatched: new Date().toISOString(),
           progress: 0,
           timeRemaining: '',
           targetMode: '',
-          isSingleFile: true,
-          files: [vf],
+          isSingleFile: false,
+          files: sortedRootFiles,
           folderPath: dirPath,
           folderName: rootGroupName
         });
       }
-    });
+    }
 
     let processedGroups = 0;
     const totalGroups = seriesMap.size;
@@ -134,13 +139,13 @@ export async function processMediaDirectory(
         allFilesList.push(...sFiles);
       }
 
-      const existing = existingWatchlists.find(w => w.folderPath === dirPath && w.title === seriesTitle);
+      const existing = existingWatchlists.find(w => w.folderPath === dirPath && (w.title === seriesTitle || (w.files && w.files.some(f => allFilesList.some(af => af.absolutePath === (f as any).absolutePath)))));
 
       if (totalFilesInSeries === 1) {
         // Special rule: Folder with exactly 1 file -> single playlist
         const singleFile = allFilesList[0];
         if (existing) {
-          watchlists.push({ ...existing, files: [singleFile], seasons: undefined, isSingleFile: true, episodesCount: 1 });
+          watchlists.push({ ...existing, files: [singleFile], seasons: undefined, isSingleFile: false, episodesCount: 1 });
         } else {
           watchlists.push({
             id: crypto.randomUUID(),
@@ -153,7 +158,7 @@ export async function processMediaDirectory(
             progress: 0,
             timeRemaining: '',
             targetMode: '',
-            isSingleFile: true,
+            isSingleFile: false,
             files: [singleFile],
             folderPath: dirPath,
             folderName: rootGroupName

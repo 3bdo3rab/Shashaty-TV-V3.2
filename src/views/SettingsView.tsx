@@ -165,7 +165,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   });
   const [resumePlayback, setResumePlayback] = useState(() => {
     const saved = localStorage.getItem('app_resume_playback');
-    return saved !== null ? JSON.parse(saved) : true;
+    return saved !== null ? JSON.parse(saved) : false;
   });
   const [breakDuration, setBreakDuration] = useState(() => {
     return localStorage.getItem('app_break_duration') || '30 ثانية';

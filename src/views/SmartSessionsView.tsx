@@ -70,6 +70,7 @@ export const SmartSessionsView: React.FC<SmartSessionsViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('all');
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
+  const [selectedSessionForEpisodes, setSelectedSessionForEpisodes] = useState<{session: Session, queue: any[]} | null>(null);
 
   const toggleWatchlistSelection = (id: string, forceState?: boolean) => {
     if (forceState !== undefined) {
@@ -478,6 +479,45 @@ export const SmartSessionsView: React.FC<SmartSessionsViewProps> = ({
     );
   };
 
+  const handleOpenEpisodeSelector = (session: Session) => {
+    const isScheduleSession = session.scheduleSlots && session.scheduleSlots.length > 0;
+    const mergedQueue = isScheduleSession ? buildScheduleSessionQueue(session, rawWatchlists) : mergeSessionWatchlists(session, rawWatchlists);
+    
+    if (mergedQueue.length === 0) {
+      alert('الجلسة فارغة أو قوائم التشغيل المحسوبة غير موجودة.');
+      return;
+    }
+
+    setSelectedSessionForEpisodes({ session, queue: mergedQueue });
+  };
+
+  const handleSelectEpisode = (index: number) => {
+     if (!selectedSessionForEpisodes) return;
+     const { session, queue } = selectedSessionForEpisodes;
+     
+     const updatedSession = {
+       ...session,
+       queue: queue,
+       lastWatchedIndex: index,
+       lastWatchedTime: 0
+     };
+     if (onUpdateSession) {
+       onUpdateSession(updatedSession);
+     }
+
+     onPlay(
+       queue[index].file,
+       queue[index].title,
+       `جلسة ذكية: ${session.title}`,
+       queue,
+       index,
+       session.id,
+       undefined,
+       0
+     );
+     setSelectedSessionForEpisodes(null);
+  };
+
   return (
     <motion.div 
       initial={{ opacity: 0 }}
@@ -591,6 +631,15 @@ export const SmartSessionsView: React.FC<SmartSessionsViewProps> = ({
                           <span className="whitespace-nowrap">من البداية</span>
                         </button>
                       )}
+
+                      <button 
+                        onClick={() => handleOpenEpisodeSelector(session)} 
+                        className="px-3.5 py-2.5 text-white/80 hover:text-amber-300 glass rounded-full transition-all flex items-center gap-1.5 text-xs sm:text-sm font-bold cursor-pointer hover:bg-white/10 shrink-0"
+                        title="تحديد حلقة معينة"
+                      >
+                        <LayoutList className="w-4 h-4 text-amber-400 shrink-0" />
+                        <span className="whitespace-nowrap">اختر حلقة</span>
+                      </button>
 
                       <button 
                         onClick={() => handleStartSession(session, false)} 
@@ -1485,6 +1534,86 @@ export const SmartSessionsView: React.FC<SmartSessionsViewProps> = ({
         }}
         onCancel={() => setDeletingSessionId(null)}
       />
+
+      <AnimatePresence>
+        {selectedSessionForEpisodes && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 md:p-12">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+              onClick={() => setSelectedSessionForEpisodes(null)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-4xl max-h-[85vh] glass rounded-3xl border border-white/10 shadow-2xl overflow-hidden flex flex-col bg-[#0a0a0a]"
+            >
+              <div className="p-6 border-b border-white/10 flex items-center justify-between sticky top-0 bg-[#0a0a0a]/90 backdrop-blur-xl z-10">
+                <div>
+                  <h3 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2">
+                    <LayoutList className="w-6 h-6 text-amber-400" />
+                    تحديد حلقة - {selectedSessionForEpisodes.session.title}
+                  </h3>
+                  <p className="text-sm text-white/50 mt-1">
+                    إجمالي الحلقات المحسوبة: {selectedSessionForEpisodes.queue.length}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setSelectedSessionForEpisodes(null)}
+                  className="p-2 hover:bg-white/10 rounded-full transition-colors cursor-pointer text-white/60 hover:text-white"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="p-4 sm:p-6 overflow-y-auto flex-1 custom-scrollbar">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {selectedSessionForEpisodes.queue.map((item, idx) => {
+                    const title = item.title || item.name?.replace(/\.[^/.]+$/, "") || `الحلقة ${idx + 1}`;
+                    const isCurrent = selectedSessionForEpisodes.session.lastWatchedIndex === idx;
+                    
+                    return (
+                      <button
+                        key={`${idx}-${item.absolutePath || idx}`}
+                        onClick={() => handleSelectEpisode(idx)}
+                        className={`flex items-start gap-3 p-3 rounded-xl border transition-all text-right group cursor-pointer ${
+                          isCurrent 
+                            ? 'bg-amber-500/20 border-amber-500/50 hover:bg-amber-500/30' 
+                            : 'bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/20'
+                        }`}
+                      >
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 font-bold text-sm ${
+                          isCurrent ? 'bg-amber-500 text-black' : 'bg-black/50 text-white/70 group-hover:bg-white/20 group-hover:text-white'
+                        }`}>
+                          {idx + 1}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className={`font-bold text-sm truncate ${isCurrent ? 'text-amber-300' : 'text-white/90 group-hover:text-white'}`}>
+                            {title}
+                          </div>
+                          {item.watchlistName && (
+                            <div className="text-[10px] text-white/50 truncate mt-0.5">
+                              {item.watchlistName}
+                            </div>
+                          )}
+                        </div>
+                        {isCurrent && (
+                          <div className="shrink-0 mt-1">
+                            <span className="w-2 h-2 rounded-full bg-amber-400 block animate-pulse" />
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 };

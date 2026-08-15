@@ -2,7 +2,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Play, Pause, SkipBack, SkipForward, ArrowRight, Volume2, VolumeX, Maximize, Minimize, List, RotateCw, X, Film, Check, Sparkles, CheckCircle2, BookOpen, Music, Star, Globe, Radio, Sliders, PictureInPicture, Sun, Settings, ChevronsLeft, ChevronsRight, Tv, Bell, BellOff } from 'lucide-react';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Mode, Channel, Watchlist, WeeklyScheduleEntry, ModeConfig } from '../types';
-import { isTauri } from '../utils/tauri';
+import { isTauri, toggleMaximizeWindow } from '../utils/tauri';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { LogicalSize } from '@tauri-apps/api/dpi';
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
@@ -1402,13 +1402,15 @@ const [isPlaying, setIsPlaying] = useState(true);
     handleBackToFloating();
   };
 
-  const toggleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      containerRef.current?.requestFullscreen().catch(err => {
-        console.error(`Error attempting to enable full-screen mode: ${err.message} (${err.name})`);
-      });
+  const toggleFullscreen = async () => {
+    await toggleMaximizeWindow();
+    if (isTauri()) {
+      try {
+        const win = getCurrentWindow();
+        setIsFullscreen(await win.isFullscreen());
+      } catch (e) {}
     } else {
-      document.exitFullscreen();
+      setIsFullscreen(!!document.fullscreenElement);
     }
   };
 
@@ -1539,13 +1541,16 @@ const [isPlaying, setIsPlaying] = useState(true);
     if (isTauri()) {
       try {
         const win = getCurrentWindow();
-        const wasMaximized = await win.isMaximized();
-        if (!wasMaximized) {
-           await win.maximize(); 
+        const isFS = await win.isFullscreen();
+        if (!isFS) {
+          const wasMaximized = await win.isMaximized();
+          if (!wasMaximized) {
+             await win.maximize(); 
+          }
+          await win.setDecorations(true);
         }
         const appAlwaysOnTop = localStorage.getItem('app_always_on_top') === 'true';
         await win.setAlwaysOnTop(appAlwaysOnTop);
-        await win.setDecorations(true);
       } catch (err) {}
     }
   };
@@ -1919,6 +1924,13 @@ const [isPlaying, setIsPlaying] = useState(true);
       const nextIdx = targetIdx !== undefined ? targetIdx : (currentIndex < files.length - 1 ? currentIndex + 1 : -1);
       if (nextIdx === -1) return;
       
+      // If we are playing a Channel, transition seamlessly!
+      if (currentChannelId) {
+        playItemAtIndex(nextIdx);
+        return;
+      }
+
+      
       const nextItem = files[nextIdx];
       const nextTitle = nextItem.title || nextItem.name?.replace(/\.[^/.]+$/, "") || `الحلقة ${nextIdx + 1}`;
       const nextWatchlist = nextItem.watchlistName || watchlistTitle;
@@ -2165,7 +2177,7 @@ const [isPlaying, setIsPlaying] = useState(true);
         case 'toggle_fullscreen': toggleFullscreen(); break;
         case 'volume_up': handleVolumeChange(null, Math.min(100, volume + 5)); break;
         case 'volume_down': handleVolumeChange(null, Math.max(0, volume - 5)); break;
-        case 'back': if (isFullscreen) { toggleFullscreen(); } else { onExit(); } break;
+        case 'back': handleStopAndClose(); break;
       }
     };
     window.addEventListener('tvCommand', handleTvCommand);
