@@ -30,29 +30,20 @@ export const minimizeWindow = async () => {
 };
 
 export const toggleMaximizeWindow = async () => {
-  let isMax = false;
+  let isFS = false;
   let handledByTauri = false;
 
   const win = await getTauriWindow();
   if (win) {
     try {
-      if (typeof win.toggleMaximize === 'function') {
-        await win.toggleMaximize();
-        isMax = typeof win.isMaximized === 'function' ? await win.isMaximized() : true;
-        handledByTauri = true;
-      } else if (typeof win.isMaximized === 'function') {
-        const currentlyMax = await win.isMaximized();
-        if (currentlyMax) {
-          if (typeof win.unmaximize === 'function') await win.unmaximize();
-          isMax = false;
-        } else {
-          if (typeof win.maximize === 'function') await win.maximize();
-          isMax = true;
-        }
+      if (typeof win.isFullscreen === 'function') {
+        const currentlyFS = await win.isFullscreen();
+        await win.setFullscreen(!currentlyFS);
+        isFS = !currentlyFS;
         handledByTauri = true;
       }
     } catch (e) {
-      console.warn('Tauri window maximize error, falling back to browser mode:', e);
+      console.warn('Tauri window fullscreen error, falling back to browser mode:', e);
     }
   }
 
@@ -78,9 +69,9 @@ export const toggleMaximizeWindow = async () => {
 
         if (!fullscreenSuccess) {
           document.body.classList.add('app-maximized-viewport');
-          isMax = true;
+          isFS = true;
         } else {
-          isMax = true;
+          isFS = true;
         }
       } else {
         if (isCurrentlyFullscreen) {
@@ -95,16 +86,16 @@ export const toggleMaximizeWindow = async () => {
           }
         }
         document.body.classList.remove('app-maximized-viewport');
-        isMax = false;
+        isFS = false;
       }
     } catch (err) {
       console.warn('Browser maximize error:', err);
-      isMax = document.body.classList.toggle('app-maximized-viewport');
+      isFS = document.body.classList.toggle('app-maximized-viewport');
     }
   }
 
-  window.dispatchEvent(new CustomEvent('app-maximize-toggled', { detail: { isMaximized: isMax } }));
-  return isMax;
+  window.dispatchEvent(new CustomEvent('app-maximize-toggled', { detail: { isMaximized: isFS } }));
+  return isFS;
 };
 
 export const closeWindow = async () => {

@@ -450,7 +450,6 @@ export const PlayerView: React.FC<PlayerViewProps> = ({
 
 const [isPlaying, setIsPlaying] = useState(true);
   const [showControls, setShowControls] = useState(true);
-  const [isTitleBarHovered, setIsTitleBarHovered] = useState(false);
   const titleBarTouchTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [showNextEpisode, setShowNextEpisode] = useState(false);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
@@ -1500,34 +1499,11 @@ const [isPlaying, setIsPlaying] = useState(true);
       (window as any).documentPictureInPicture.window.close();
     }
 
-    // Force exit Fullscreen to prevent stretching the floating window
-    if (document.fullscreenElement) {
-      await document.exitFullscreen().catch(() => {});
-    }
+    // Removed document.exitFullscreen() to allow the app to remain in fullscreen mode
 
     const videoElement = videoRef.current;
     if (onProgressUpdate && videoElement) {
       onProgressUpdate(currentIndex, videoElement.currentTime);
-    }
-
-    if (isTauri()) {
-      try {
-        const win = getCurrentWindow();
-        await win.setFullscreen(false);
-        let w = 440;
-        let h = 260;
-        try {
-          const store = await load('settings.json', { autoSave: false });
-          const savedSize: any = await store.get('pip_dimensions');
-          if (savedSize && typeof savedSize.width === 'number') {
-             w = savedSize.width;
-             h = savedSize.height;
-          }
-        } catch(e) {}
-        await win.setSize(new LogicalSize(w, h));
-        await win.setAlwaysOnTop(true);
-        await win.setDecorations(false);
-      } catch (err) {}
     }
 
     if (onToggleFloating) {
@@ -1541,14 +1517,6 @@ const [isPlaying, setIsPlaying] = useState(true);
     if (isTauri()) {
       try {
         const win = getCurrentWindow();
-        const isFS = await win.isFullscreen();
-        if (!isFS) {
-          const wasMaximized = await win.isMaximized();
-          if (!wasMaximized) {
-             await win.maximize(); 
-          }
-          await win.setDecorations(true);
-        }
         const appAlwaysOnTop = localStorage.getItem('app_always_on_top') === 'true';
         await win.setAlwaysOnTop(appAlwaysOnTop);
       } catch (err) {}
@@ -2992,12 +2960,10 @@ const [isPlaying, setIsPlaying] = useState(true);
         )}
       </AnimatePresence>
 
-      {/* Title Bar (Header Toolbar) - Appears when controls are shown or mouse enters title bar area */}
+      {/* Title Bar (Header Toolbar) - Appears when controls are shown */}
       <div 
-        onMouseEnter={() => setIsTitleBarHovered(true)}
-        onMouseLeave={() => setIsTitleBarHovered(false)}
         className={`absolute top-0 left-0 right-0 z-30 transition-all duration-300 pointer-events-auto min-h-[90px] ${
-          showControls || isTitleBarHovered || showPlaylistDrawer || showChannelsDrawer || showSettings
+          showControls || showPlaylistDrawer || showChannelsDrawer || showSettings
             ? 'opacity-100 translate-y-0' 
             : 'opacity-0 -translate-y-3 pointer-events-none'
         }`}
